@@ -1,0 +1,15 @@
+[package]
+name = "lava-connect-android-jni"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lib]
+name = "lava_connect"
+crate-type = ["cdylib"]
+[dependencies]
+base64 = "0.22"
+serde.workspace = true
+jni = "0.21"
+anyhow.workspace = true
+lava-core.workspace = true
+serde_json.workspace = true

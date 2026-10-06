@@ -1,0 +1,12 @@
+[package]
+name = "lava-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"

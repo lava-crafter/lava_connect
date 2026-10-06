@@ -1,0 +1,24 @@
+pkgname=lava-connect
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Secure Android and Linux clipboard synchronization'
+arch=('x86_64' 'aarch64')
+license=('GPL-3.0-or-later')
+depends=('wl-clipboard' 'libxkbcommon' 'wayland' 'dbus' 'fontconfig')
+makedepends=('rust' 'git')
+# Local source package: run scripts/build-linux.sh, then package manually or
+# replace source with a tagged archive when the first release is published.
+source=()
+sha256sums=()
+build() {
+  cd "$startdir/../../.."
+  cargo build --locked --release -p lava-connect
+}
+package() {
+  cd "$startdir/../../.."
+  install -Dm755 target/release/lava-connect "$pkgdir/usr/bin/lava-connect"
+  install -Dm644 linux/packaging/desktop/lava-connect.desktop "$pkgdir/usr/share/applications/lava-connect.desktop"
+  install -Dm644 linux/packaging/desktop/lava-connect.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/lava-connect.svg"
+  install -Dm644 linux/packaging/systemd/lava-connect.service "$pkgdir/usr/lib/systemd/user/lava-connect.service"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/lava-connect/LICENSE"
+}

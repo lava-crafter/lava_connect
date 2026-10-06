@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lava Connect
+Comment=Secure Android and Linux clipboard synchronization
+Exec=lava-connect
+Icon=lava-connect
+Terminal=false
+Categories=Network;Utility;
+StartupNotify=true
