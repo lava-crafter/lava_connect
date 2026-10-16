@@ -10,7 +10,7 @@ use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     path::PathBuf,
     sync::{Arc, Mutex, mpsc},
     thread,
@@ -790,14 +790,9 @@ impl Actor {
                             continue;
                         }
                         let addresses: Vec<_> = info
-                            .get_addresses()
-                            .iter()
-                            .filter_map(|ip| match ip {
-                                IpAddr::V4(v4) => {
-                                    Some(SocketAddr::new((*v4).into(), info.get_port()))
-                                }
-                                _ => None,
-                            })
+                            .get_addresses_v4()
+                            .into_iter()
+                            .map(|ip| SocketAddr::new(ip.into(), info.get_port()))
                             .collect();
                         if addresses.is_empty() {
                             continue;

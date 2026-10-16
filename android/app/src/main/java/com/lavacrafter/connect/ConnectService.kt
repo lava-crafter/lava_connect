@@ -196,8 +196,11 @@ class ConnectService : Service() {
         for (i in 0 until events.length()) {
             val event = events.getJSONObject(i)
             when (event.optString("type")) {
-                "error" -> fail(event.optString("message"))
-                "clipboard_received" ->
+                "error" -> {
+                    fail(event.optString("message"))
+                }
+
+                "clipboard_received" -> {
                     try {
                         val mime = event.getString("mime_type")
                         val clip =
@@ -233,6 +236,7 @@ class ConnectService : Service() {
                     } catch (e: Exception) {
                         fail(e.message ?: "Unable to receive clipboard")
                     }
+                }
             }
         }
     }

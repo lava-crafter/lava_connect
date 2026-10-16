@@ -15,6 +15,8 @@ cargo run --locked -p lava-connect -- --name "Lava Desktop"
 # 或：bash scripts/build-linux.sh
 ```
 
+`cargo build` 的可执行文件位于 `target/debug/lava-connect`；Linux 构建脚本生成 `target/release/lava-connect`。
+
 两端连接同一个 LAN；选择设备「配对」，核对**两端相同的六位代码和目标设备**，两端都确认。
 剪贴板同步支持 UTF-8 文字 / PNG（每条最多 8 MiB，PNG 最多 1600 万像素）。Linux 自动监测剪贴板，也可手动发送。
 每个受信任设备的文字、图片能力均可单独关闭；「撤销信任」立即断开并删除本地授权。
@@ -32,10 +34,19 @@ cargo run --locked -p lava-connect -- --name "Lava Desktop"
 安装 JDK 17、Android SDK 37 / NDK、Rust Android target、`cargo-ndk`，然后：
 
 ```sh
+# 已安装 rustup 和 Android SDK command-line tools 时，补齐构建依赖：
+source "$HOME/.cargo/env"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+  'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370'
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/30.0.16248370"
+rustup target add aarch64-linux-android
+cargo install cargo-ndk --version 4.1.2 --locked
 bash scripts/build-android.sh
 ```
 
-该脚本先编译并打包 `liblava_connect.so`。仅运行 Gradle 而未提供 native 库时，最多只能验证 Kotlin/UI 构建，产出的 APK **不能用于连接功能**。
+该脚本先编译并打包 `liblava_connect.so`，并检查 APK 中确实包含该库。首版 APK 仅支持 `arm64-v8a`，输出为 `android/app/build/outputs/apk/debug/app-debug.apk`（开发调试签名）；原生库输出为 `android/app/src/main/jniLibs/arm64-v8a/liblava_connect.so`。
+仅运行 Gradle 而未提供 native 库时，最多只能验证 Kotlin/UI 构建，产出的 APK **不能用于连接功能**。
 
 打开应用并启动连接服务，按上面的流程配对。复制文字或图片后切回应用，点击发送剪贴板。
 前台服务保持连接；**Android 10+ 普通应用不能任意读取后台剪贴板**，前台监听和手动发送是首版支持的模式。
@@ -55,6 +66,7 @@ bash scripts/test-jni-host.sh # JDK 17：实际 JVM 调用 JNI（不替代 Andro
 
 Protobuf 由 `crates/protocol/build.rs` 使用 vendored protoc 生成，不要求系统安装 protoc。
 Kotlin 检查：`cd android && ./gradlew ktlintCheck :app:lintDebug`；格式化：`./gradlew ktlintFormat`。
+构建使用 Gradle 9.8.1、AGP 9.4.1 内置 Kotlin 和 Compose compiler 2.4.21；不再应用旧的 Kotlin Android 插件。依赖版本与升级范围见 [dependencies.md](docs/dependencies.md)。
 核心集成测试使用真实的 loopback QUIC 连接，覆盖两端配对确认、身份固定、重启重连、文字/图片消息、回环抑制、能力开关及撤销信任。
 真实 LAN 发现、桌面剪贴板、Android 权限和后台行为仍需[手动验收](docs/testing.md)，不能用编译成功替代。
 

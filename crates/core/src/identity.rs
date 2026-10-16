@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-use aes_gcm::{
-    Aes256Gcm, KeyInit,
-    aead::{Aead, OsRng, rand_core::RngCore},
-};
+use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use anyhow::{Context, Result, bail};
+use rand::{TryRng, rngs::SysRng};
 use rcgen::{CertifiedKey, generate_simple_self_signed};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
@@ -37,8 +35,9 @@ impl Identity {
                     if !bytes.starts_with(b"LC01") || bytes.len() < 16 {
                         bail!("invalid encrypted identity");
                     }
+                    let nonce: &[u8; 12] = bytes[4..16].try_into()?;
                     cipher(key)?
-                        .decrypt((&bytes[4..16]).into(), &bytes[16..])
+                        .decrypt(nonce.into(), &bytes[16..])
                         .map_err(|_| anyhow::anyhow!("cannot decrypt identity"))?
                 }
                 None => bytes,
@@ -56,7 +55,9 @@ impl Identity {
         let plain = serde_json::to_vec(&identity)?;
         let bytes = if let Some(key) = storage_key {
             let mut nonce = [0u8; 12];
-            OsRng.fill_bytes(&mut nonce);
+            SysRng
+                .try_fill_bytes(&mut nonce)
+                .context("cannot generate identity encryption nonce")?;
             let mut bytes = b"LC01".to_vec();
             bytes.extend(nonce);
             bytes.extend(
@@ -135,6 +136,22 @@ impl TrustStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lc01_identity_remains_compatible() {
+        // LC01 uses AES-256-GCM with a 12-byte nonce and a 16-byte tag.
+        // Fixed ciphertext generated independently with JDK AES/GCM/NoPadding
+        // guards the pre-upgrade format against accidental storage changes.
+        let temporary = crate::test_directory();
+        let mut bytes = b"LC01".to_vec();
+        bytes.extend(hex::decode("000102030405060708090a0b").unwrap());
+        bytes.extend(hex::decode("5b79653b3c630c3e2d4c38fd1cb814f994cf4767ed2855b1c120b2bc5b9c398817993b90fdba7ce2d22cb3bd2a4ec4b1bfe15d6e74").unwrap());
+        fs::write(temporary.path().join("identity.bin"), bytes).unwrap();
+
+        let identity = Identity::load(temporary.path(), Some(&"ab".repeat(32))).unwrap();
+        assert_eq!(identity.certificate, [1, 2, 3]);
+        assert_eq!(identity.key, [4, 5, 6]);
+    }
+
     #[test]
     fn identity_is_persistent_and_encrypted() {
         let temporary = crate::test_directory();

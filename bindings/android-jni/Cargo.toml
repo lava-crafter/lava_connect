@@ -7,9 +7,9 @@ license.workspace = true
 name = "lava_connect"
 crate-type = ["cdylib"]
 [dependencies]
-base64 = "0.22"
+base64 = "0.23.1"
 serde.workspace = true
-jni = "0.21"
+jni = "0.22.4"
 anyhow.workspace = true
 lava-core.workspace = true
 serde_json.workspace = true

@@ -8,11 +8,11 @@ build = "build.rs"
 [dependencies]
 anyhow.workspace = true
 lava-core.workspace = true
-slint = { version = "1.13", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2"] }
-ksni = "0.3"
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2"] }
+ksni = "0.3.6"
 tokio.workspace = true
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-ctrlc = { version = "3", features = ["termination"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ctrlc = { version = "3.5.2", features = ["termination"] }
 
 [build-dependencies]
-slint-build = "1.13"
+slint-build = "1.18.1"
