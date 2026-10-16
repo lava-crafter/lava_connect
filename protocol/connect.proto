@@ -23,7 +23,12 @@ message PairRequest {}
 message PairConfirm {}
 message PairCancel {}
 message Ping {}
-message Ready { repeated Capability allowed = 1; }
+message Ready {
+  repeated Capability allowed = 1;
+  // Only active groups for which this peer is explicitly a local member.
+  repeated string clipboard_group_ids = 2;
+  bool clipboard_groups_supported = 3;
+}
 message ClipboardPayload {
   string id = 1;
   string origin_device_id = 2;
@@ -31,6 +36,8 @@ message ClipboardPayload {
   string mime_type = 4;
   bytes data = 5;
   int64 timestamp = 6;
+  // Empty means the legacy default group. Custom groups require mutual support.
+  string group_id = 7;
 }
 message Envelope {
   oneof body {

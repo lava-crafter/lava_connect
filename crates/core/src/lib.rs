@@ -5,6 +5,15 @@ mod runtime;
 mod security;
 pub use runtime::{CoreConfig, CoreHandle};
 
+pub const DEFAULT_GROUP_ID: &str = "00000000-0000-0000-0000-000000000000";
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ClipboardGroup {
+    pub id: String,
+    pub name: String,
+    pub members: Vec<String>,
+}
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -17,6 +26,8 @@ pub struct Device {
     pub pairing_code: Option<String>,
     pub text_enabled: bool,
     pub image_enabled: bool,
+    pub sync_in_group: bool,
+    pub group_compatible: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -26,6 +37,8 @@ pub struct Snapshot {
     pub running: bool,
     pub devices: Vec<Device>,
     pub error: Option<String>,
+    pub active_group_id: String,
+    pub groups: Vec<ClipboardGroup>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -34,6 +47,7 @@ pub enum CoreEvent {
     Changed,
     ClipboardReceived {
         device_id: String,
+        group_id: String,
         mime_type: String,
         data: Vec<u8>,
         content_hash: String,
@@ -46,6 +60,24 @@ pub enum CoreEvent {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
+    CreateGroup {
+        name: String,
+    },
+    JoinGroup {
+        group_id: String,
+        name: String,
+    },
+    SelectGroup {
+        group_id: String,
+    },
+    DeleteGroup {
+        group_id: String,
+    },
+    SetGroupMember {
+        group_id: String,
+        device_id: String,
+        enabled: bool,
+    },
     MarkClipboardApplied {
         content_hash: String,
     },

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { Button, CheckBox, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
-export struct DeviceRow { id: string, name: string, state: string, trusted: bool, code: string, text-enabled: bool, image-enabled: bool }
+import { Button, CheckBox, ComboBox, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+export struct DeviceRow { id: string, name: string, state: string, trusted: bool, code: string, text-enabled: bool, image-enabled: bool, in-group: bool, group-compatible: bool }
+export struct GroupRow { id: string, name: string }
 export component MainWindow inherits Window {
     title: "Lava Connect";
+    icon: @image-url("../../../assets/icon.png");
     preferred-width: 840px;
     preferred-height: 660px;
     min-width: 640px;
@@ -10,8 +12,16 @@ export component MainWindow inherits Window {
     in property <string> identity;
     in property <string> status;
     in property <[DeviceRow]> devices;
+    in property <[GroupRow]> groups;
+    in property <[string]> group-names;
+    in property <int> active-group-index;
+    in property <string> active-group-id;
+    in-out property <string> group-name;
+    in-out property <string> group-code;
     callback action(string, string, string);
     callback capability(string, int, bool);
+    callback group-action(string, string, string);
+    callback group-member(string, string, bool);
     callback send-clipboard();
     callback quit();
     VerticalBox {
@@ -22,6 +32,19 @@ export component MainWindow inherits Window {
         Text { text: "本机指纹：" + root.identity; wrap: word-wrap; font-size: 11px; }
         Text { text: root.status; wrap: word-wrap; }
         HorizontalBox {
+            Text { text: "剪贴板组："; }
+            ComboBox { model: root.group-names; current-index: root.active-group-index; selected(value) => { root.group-action("select", "", root.groups[self.current-index].id); } }
+            Button { text: "删除当前组（返回默认组）"; enabled: root.active-group-id != "00000000-0000-0000-0000-000000000000"; clicked => { root.group-action("delete", "", root.active-group-id); } }
+        }
+        HorizontalBox {
+            LineEdit { placeholder-text: "组名称"; text <=> root.group-name; }
+            Button { text: "创建并切换"; clicked => { root.group-action("create", root.group-name, ""); } }
+            LineEdit { placeholder-text: "UUID 组码"; text <=> root.group-code; }
+            Button { text: "加入并切换"; clicked => { root.group-action("join", root.group-name, root.group-code); } }
+        }
+        LineEdit { text: root.active-group-id; read-only: true; }
+        Text { text: "组码不替代配对授权；两端选中同组并互选成员后才同步，不经其他设备中继。"; wrap: word-wrap; font-size: 11px; }
+        HorizontalBox {
             Button { text: "发送剪贴板"; clicked => { root.send-clipboard(); } }
             Button { text: "退出（停止同步）"; clicked => { root.quit(); } }
         }
@@ -30,11 +53,12 @@ export component MainWindow inherits Window {
                 for device in root.devices: Rectangle {
                     background: #242a34;
                     border-radius: 8px;
-                    min-height: device.code != "" ? 230px : 145px;
+                    min-height: device.code != "" ? 260px : 175px;
                     VerticalBox {
                         padding: 12px;
                         Text { text: device.name + " · " + device.state; color: white; font-weight: 600; }
                         Text { text: device.id; color: #bfc8da; font-size: 10px; wrap: word-wrap; }
+                        Text { text: "本地组成员：" + (device.in-group ? "是" : "否") + " · 远端组就绪：" + (device.group-compatible ? "是" : "否"); color: #bfc8da; }
                         if device.code != "": Text { text: "请比较两端代码：" + device.code; color: #ffae65; font-size: 22px; }
                         if device.code != "": Text { text: "只有代码和目标设备匹配时，才在两端确认。"; color: white; }
                         HorizontalBox {
@@ -44,12 +68,13 @@ export component MainWindow inherits Window {
                             if device.trusted: Button { text: "撤销信任"; clicked => { root.action("unpair", device.id, ""); } }
                             if device.trusted: CheckBox { text: "文字"; checked: device.text-enabled; toggled => { root.capability(device.id, 1, self.checked); } }
                             if device.trusted: CheckBox { text: "图片"; checked: device.image-enabled; toggled => { root.capability(device.id, 2, self.checked); } }
+                            if device.trusted: CheckBox { text: "当前组成员"; checked: device.in-group; toggled => { root.group-member(root.active-group-id, device.id, self.checked); } }
                         }
                     }
                 }
             }
         }
-        Text { text: "Wayland 需要 wl-clipboard。关闭窗口后留在托盘；Android 普通模式需在应用前台发送/接收。"; wrap: word-wrap; font-size: 11px; }
+        Text { text: "Wayland 需要 wl-clipboard。关闭窗口后留在托盘；Android 可后台接收并写入剪贴板，前台或手动操作时读取并发送。"; wrap: word-wrap; font-size: 11px; }
         Text { text: "© 2026 Lava Connect contributors · GPL-3.0-or-later · 无担保 · 许可证见随附 LICENSE / gnu.org/licenses/gpl-3.0.html"; wrap: word-wrap; font-size: 10px; }
     }
 }

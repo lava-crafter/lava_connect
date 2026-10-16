@@ -10,6 +10,10 @@ internal class PendingClipboard<T> {
 
     private var pending: Entry<T>? = null
 
+    fun clear() {
+        pending = null
+    }
+
     fun offer(
         value: T,
         hash: String,

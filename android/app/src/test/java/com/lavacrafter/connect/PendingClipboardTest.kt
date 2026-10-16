@@ -7,6 +7,14 @@ import org.junit.Test
 
 class PendingClipboardTest {
     @Test
+    fun switchingGroupsDiscardsPendingRetry() {
+        val pending = PendingClipboard<String>()
+        pending.offer("old-group-clipboard", "hash")
+        pending.clear()
+        org.junit.Assert.assertFalse(pending.apply({ error("must not mark") }, { error("must not write") }))
+    }
+
+    @Test
     fun writesWithoutForegroundCallbackAndMarksBeforeWrite() {
         val pending = PendingClipboard<String>()
         val calls = mutableListOf<String>()

@@ -35,6 +35,13 @@ impl ksni::Tray for Tray {
     fn icon_name(&self) -> String {
         "lava-connect".into()
     }
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        vec![ksni::Icon {
+            width: 32,
+            height: 32,
+            data: include_bytes!("../../packaging/desktop/lava-connect-tray.argb").to_vec(),
+        }]
+    }
     fn activate(&mut self, _: i32, _: i32) {
         let _ = self.tx.send(Intent::Show);
     }
@@ -109,6 +116,36 @@ fn main() -> Result<()> {
         let _ = send.send(Intent::Core(Command::SetCapability {
             device_id: id.to_string(),
             capability,
+            enabled,
+        }));
+    });
+    let send = tx.clone();
+    ui.on_group_action(move |action, name, group_id| {
+        let command = match action.as_str() {
+            "create" => Some(Command::CreateGroup {
+                name: name.to_string(),
+            }),
+            "join" => Some(Command::JoinGroup {
+                group_id: group_id.to_string(),
+                name: name.to_string(),
+            }),
+            "select" => Some(Command::SelectGroup {
+                group_id: group_id.to_string(),
+            }),
+            "delete" => Some(Command::DeleteGroup {
+                group_id: group_id.to_string(),
+            }),
+            _ => None,
+        };
+        if let Some(command) = command {
+            let _ = send.send(Intent::Core(command));
+        }
+    });
+    let send = tx.clone();
+    ui.on_group_member(move |group_id, device_id, enabled| {
+        let _ = send.send(Intent::Core(Command::SetGroupMember {
+            group_id: group_id.to_string(),
+            device_id: device_id.to_string(),
             enabled,
         }));
     });
@@ -211,8 +248,22 @@ fn controller(
                     mime_type,
                     data,
                     content_hash,
-                    ..
+                    group_id,
+                    device_id,
                 } if !paused => {
+                    let current = core.snapshot();
+                    if current.active_group_id != group_id
+                        || !current
+                            .devices
+                            .iter()
+                            .any(|d| d.id == device_id && d.trusted)
+                        || !current
+                            .groups
+                            .iter()
+                            .any(|g| g.id == group_id && g.members.contains(&device_id))
+                    {
+                        continue;
+                    }
                     if let Err(error) = core.command(Command::MarkClipboardApplied { content_hash })
                     {
                         status = error.to_string();
@@ -261,6 +312,7 @@ fn controller(
 fn update_ui(ui: &MainWindow, snapshot: Snapshot, status: &str) {
     ui.set_identity(snapshot.device_id.into());
     ui.set_status(status.into());
+    let group_id = snapshot.active_group_id.clone();
     let rows = snapshot
         .devices
         .into_iter()
@@ -272,9 +324,36 @@ fn update_ui(ui: &MainWindow, snapshot: Snapshot, status: &str) {
             code: d.pairing_code.unwrap_or_default().into(),
             text_enabled: d.text_enabled,
             image_enabled: d.image_enabled,
+            in_group: d.sync_in_group,
+            group_compatible: d.group_compatible,
         })
         .collect::<Vec<_>>();
     ui.set_devices(ModelRc::new(VecModel::from(rows)));
+    ui.set_active_group_id(group_id.into());
+    ui.set_active_group_index(
+        snapshot
+            .groups
+            .iter()
+            .position(|g| g.id == snapshot.active_group_id)
+            .unwrap_or(0) as i32,
+    );
+    ui.set_group_names(ModelRc::new(VecModel::from(
+        snapshot
+            .groups
+            .iter()
+            .map(|g| g.name.clone().into())
+            .collect::<Vec<_>>(),
+    )));
+    ui.set_groups(ModelRc::new(VecModel::from(
+        snapshot
+            .groups
+            .into_iter()
+            .map(|g| GroupRow {
+                id: g.id.into(),
+                name: g.name.into(),
+            })
+            .collect::<Vec<_>>(),
+    )));
 }
 fn arguments() -> Result<(CoreConfig, bool)> {
     let home = std::env::var_os("HOME").context("HOME is not set")?;

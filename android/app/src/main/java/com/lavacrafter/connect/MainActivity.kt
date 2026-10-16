@@ -12,6 +12,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -35,6 +38,11 @@ class MainActivity : ComponentActivity() {
     val context = LocalContext.current
     var text by remember { mutableStateOf("") }
     var ask by remember { mutableStateOf<DeviceInfo?>(null) }
+    var groupSettings by remember { mutableStateOf(false) }
+    var groupMenu by remember { mutableStateOf(false) }
+    var newGroupName by remember { mutableStateOf("") }
+    var joinGroupId by remember { mutableStateOf("") }
+    var joinGroupName by remember { mutableStateOf("") }
     val lifecycleOwner = LocalLifecycleOwner.current
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -148,6 +156,85 @@ class MainActivity : ComponentActivity() {
                 )
             }) { Text("License / redistribution terms") }
         }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Clipboard groups", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(8.dp))
+            Box {
+                OutlinedButton(onClick = { groupMenu = true }, enabled = state.running) {
+                    Text(state.groups.firstOrNull { it.id == state.activeGroupId }?.name ?: "Default")
+                }
+                DropdownMenu(expanded = groupMenu, onDismissRequest = { groupMenu = false }) {
+                    state.groups.forEach { group ->
+                        DropdownMenuItem(text = { Text(group.name) }, onClick = {
+                            vm.selectGroup(group.id)
+                            groupMenu = false
+                        })
+                    }
+                }
+            }
+            TextButton(onClick = { groupSettings = !groupSettings }, enabled = state.running) {
+                Text(if (groupSettings) "Hide" else "Manage")
+            }
+        }
+        SelectionContainer {
+            Text("Group code: ${state.activeGroupId}", style = MaterialTheme.typography.labelSmall)
+        }
+        if (groupSettings) {
+            AlertDialog(
+                onDismissRequest = { groupSettings = false },
+                title = { Text("Manage clipboard groups") },
+                confirmButton = { TextButton(onClick = { groupSettings = false }) { Text("Done") } },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            OutlinedTextField(newGroupName, {
+                                newGroupName = it
+                            }, label = { Text("New group name") }, modifier = Modifier.weight(1f), singleLine = true)
+                            TextButton(onClick = {
+                                vm.createGroup(newGroupName.trim())
+                                newGroupName = ""
+                            }, enabled = newGroupName.isNotBlank()) { Text("Create") }
+                        }
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                joinGroupId,
+                                { joinGroupId = it },
+                                label = { Text("Group UUID") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                joinGroupName,
+                                { joinGroupName = it },
+                                label = { Text("Your name") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            TextButton(
+                                onClick = {
+                                    vm.joinGroup(
+                                        joinGroupId.trim(),
+                                        joinGroupName.trim(),
+                                    )
+                                    joinGroupId = ""
+                                },
+                                enabled =
+                                    joinGroupId.isNotBlank() && joinGroupName.isNotBlank(),
+                            ) { Text("Join") }
+                        }
+                        if (state.activeGroupId != DEFAULT_GROUP_ID) {
+                            TextButton(
+                                onClick = { vm.deleteGroup(state.activeGroupId) },
+                            ) { Text("Delete current group (returns to Default)") }
+                        }
+                        Text(
+                            "Group codes identify groups; they are not passwords and do not authorize or pair devices.",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                },
+            )
+        }
         Text("Devices", style = MaterialTheme.typography.titleLarge)
         LazyColumn(Modifier.weight(1f)) {
             items(state.devices, key = { it.id }) { device ->
@@ -170,6 +257,14 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = { vm.command("pair", device.id) }) { Text("Pair") }
                         }
                         if (device.trusted) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Sync in group")
+                                Switch(device.syncInGroup, { vm.setGroupMember(state.activeGroupId, device.id, it) })
+                            }
+                            Text(
+                                if (device.groupCompatible) "Peer group ready" else "Peer must join and select this group",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                             Row {
                                 Text("Text clipboard")
                                 Switch(device.text, { vm.command("set_capability", device.id, 1, it) })
@@ -206,3 +301,5 @@ class MainActivity : ComponentActivity() {
         })
     }
 }
+
+private const val DEFAULT_GROUP_ID = "00000000-0000-0000-0000-000000000000"

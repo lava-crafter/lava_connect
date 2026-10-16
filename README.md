@@ -21,6 +21,8 @@ cargo run --locked -p lava-connect -- --name "Lava Desktop"
 剪贴板同步支持 UTF-8 文字 / PNG（每条最多 8 MiB，PNG 最多 1600 万像素）。Linux 自动监测剪贴板，也可手动发送。
 每个受信任设备的文字、图片能力均可单独关闭；「撤销信任」立即断开并删除本地授权。
 
+支持最多 16 个本地同步组（含不可删除的默认组）；组用于控制同步范围，不替代逐设备配对信任和能力授权。创建/加入及手动成员配置、旧版兼容和存储升级说明见[同步组](docs/groups.md)。
+
 关闭 Linux 窗口后继续驻留托盘；托盘可打开窗口、发送、暂停同步或退出。托盘不可用时，关闭窗口停止服务。
 后台模式：`lava-connect --headless`。可安装 `linux/packaging/systemd/lava-connect.service`。
 **先在 GUI 配对，退出 GUI 后再启用 headless 服务**；同一身份不允许被多个进程同时使用。当前尚未拆分 daemon / IPC。
@@ -30,7 +32,7 @@ cargo run --locked -p lava-connect -- --name "Lava Desktop"
 
 ## Android
 
-包名 `com.lavacrafter.connect`；Android 8.0+（minSdk 26，compileSdk / targetSdk 37），首要 ABI `arm64-v8a`。
+Release 包名 `com.lavacrafter.connect`，debug 包名 `com.lavacrafter.connect.debug`，可共存安装且应用数据相互独立；Android 8.0+（minSdk 26，compileSdk / targetSdk 37），首要 ABI `arm64-v8a`。原先无后缀的 debug 安装不会自动迁移到新包名，新 debug 需要重新配对。
 安装 JDK 17、Android SDK 37 / NDK、Rust Android target、`cargo-ndk`，然后：
 
 ```sh
@@ -46,6 +48,8 @@ bash scripts/build-android.sh
 ```
 
 该脚本先编译并打包 `liblava_connect.so`，并检查 APK 中确实包含该库。首版 APK 仅支持 `arm64-v8a`，输出为 `android/app/build/outputs/apk/debug/app-debug.apk`（开发调试签名）；原生库输出为 `android/app/src/main/jniLibs/arm64-v8a/liblava_connect.so`。
+
+Android Release 使用外部 `release-signing.properties` 和 keystore。默认位置为 `~/.android/release-signing.properties` 与 `~/.android/my-release-key.jks`；可用 Gradle 属性 `-PlavaConnectSigningProperties=...`、`-PlavaConnectKeystore=...` 或环境变量 `LAVA_CONNECT_SIGNING_PROPERTIES`、`LAVA_CONNECT_KEYSTORE` 覆盖路径。签名密码只放在本机配置中，不要提交到仓库。
 仅运行 Gradle 而未提供 native 库时，最多只能验证 Kotlin/UI 构建，产出的 APK **不能用于连接功能**。
 
 打开应用并启动连接服务，按上面的流程配对。复制文字或图片后切回应用，点击发送剪贴板。

@@ -70,6 +70,7 @@ enum AndroidEvent {
     },
     ClipboardReceived {
         device_id: String,
+        group_id: String,
         mime_type: String,
         data: String,
         content_hash: String,
@@ -220,11 +221,13 @@ pub extern "system" fn Java_com_lavacrafter_connect_nativecore_NativeCore_events
                     CoreEvent::Error { message } => AndroidEvent::Error { message },
                     CoreEvent::ClipboardReceived {
                         device_id,
+                        group_id,
                         mime_type,
                         data,
                         content_hash,
                     } => AndroidEvent::ClipboardReceived {
                         device_id,
+                        group_id,
                         mime_type,
                         data: STANDARD.encode(data),
                         content_hash,

@@ -60,6 +60,41 @@ class ConnectViewModel(
         repository.command(obj)
     }.onFailure { _state.value = _state.value.copy(error = it.message) }
 
+    private fun groupCommand(
+        type: String,
+        fields: Map<String, String>,
+    ) = runCatching {
+        val obj = org.json.JSONObject().put("type", type)
+        fields.forEach { (key, value) -> obj.put(key, value) }
+        repository.command(obj)
+    }.onFailure { _state.value = _state.value.copy(error = it.message) }
+
+    fun createGroup(name: String) = groupCommand("create_group", mapOf("name" to name))
+
+    fun joinGroup(
+        groupId: String,
+        name: String,
+    ) = groupCommand("join_group", mapOf("group_id" to groupId, "name" to name))
+
+    fun selectGroup(groupId: String) = groupCommand("select_group", mapOf("group_id" to groupId))
+
+    fun deleteGroup(groupId: String) = groupCommand("delete_group", mapOf("group_id" to groupId))
+
+    fun setGroupMember(
+        groupId: String,
+        deviceId: String,
+        enabled: Boolean,
+    ) = runCatching {
+        repository.command(
+            org.json
+                .JSONObject()
+                .put("type", "set_group_member")
+                .put("group_id", groupId)
+                .put("device_id", deviceId)
+                .put("enabled", enabled),
+        )
+    }.onFailure { _state.value = _state.value.copy(error = it.message) }
+
     fun receivedImage() = repository.receivedImage()
 
     fun confirmPair(

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::{
-    Command, CoreEvent, Device, Snapshot,
-    identity::{Identity, TrustStore, TrustedDevice, fingerprint},
+    ClipboardGroup, Command, CoreEvent, DEFAULT_GROUP_ID, Device, Snapshot,
+    identity::{
+        Identity, PersistenceFailure, TrustStore, TrustedDevice, fingerprint, validate_group_id,
+        validate_group_name,
+    },
     security,
 };
 use anyhow::{Context, Result, bail, ensure};
@@ -174,6 +177,8 @@ struct Session {
     remote_confirm: bool,
     remote_ready: bool,
     remote_allowed: Vec<i32>,
+    remote_groups: Vec<String>,
+    remote_groups_supported: bool,
     started: Instant,
 }
 impl Session {
@@ -300,7 +305,7 @@ impl Actor {
         loop {
             tokio::select! {
                 _ = &mut shutdown => break,
-                command = commands.recv() => match command { Some(command) => { if let Err(error) = self.command(command) { self.error(error.to_string()); } }, None => break },
+                command = commands.recv() => match command { Some(command) => { if let Err(error) = self.command(command) { let fatal = error.is::<PersistenceFailure>(); self.error(error.to_string()); if fatal { break; } } }, None => break },
                 incoming = self.endpoint.accept() => if let Some(incoming) = incoming {
                     if let Ok(permit) = incoming_limit.clone().try_acquire_owned() {
                         let hello = self.hello.clone();
@@ -312,7 +317,7 @@ impl Actor {
                         });
                     } else { incoming.refuse(); }
                 },
-                Some(event) = self.network_rx.recv() => { if let Err(error) = self.network_event(event) { self.error(error.to_string()); } },
+                Some(event) = self.network_rx.recv() => { if let Err(error) = self.network_event(event) { let fatal = error.is::<PersistenceFailure>(); self.error(error.to_string()); if fatal { break; } } },
                 _ = tick.tick() => self.tick(),
             }
         }
@@ -337,7 +342,7 @@ impl Actor {
     }
     fn refresh(&self) {
         let mut devices = BTreeMap::new();
-        for (id, trusted) in &self.trust.0 {
+        for (id, trusted) in &self.trust.devices {
             devices.insert(
                 id.clone(),
                 Device {
@@ -349,6 +354,8 @@ impl Actor {
                     pairing_code: None,
                     text_enabled: trusted.allowed.contains(&1),
                     image_enabled: trusted.allowed.contains(&2),
+                    sync_in_group: self.trust.member(id),
+                    group_compatible: false,
                 },
             );
         }
@@ -362,6 +369,8 @@ impl Actor {
                 pairing_code: None,
                 text_enabled: true,
                 image_enabled: true,
+                sync_in_group: false,
+                group_compatible: false,
             });
             device.state = if self.dialing.contains(id) {
                 "connecting"
@@ -371,7 +380,7 @@ impl Actor {
             .into();
         }
         for (id, session) in &self.sessions {
-            let trusted = self.trust.0.get(id);
+            let trusted = self.trust.devices.get(id);
             let allowed = trusted.map(|t| t.allowed.as_slice()).unwrap_or(&[1, 2]);
             devices.insert(
                 id.clone(),
@@ -391,13 +400,20 @@ impl Actor {
                     pairing_code: session.pairing.then(|| session.code.clone()),
                     text_enabled: allowed.contains(&1),
                     image_enabled: allowed.contains(&2),
+                    sync_in_group: self.trust.member(id),
+                    group_compatible: group_compatible(session, &self.trust.active_group_id),
                 },
             );
         }
         let devices: Vec<_> = devices.into_values().collect();
         let mut snapshot = self.snapshot.lock().unwrap();
-        if snapshot.devices != devices {
+        if snapshot.devices != devices
+            || snapshot.groups != self.trust.groups
+            || snapshot.active_group_id != self.trust.active_group_id
+        {
             snapshot.devices = devices;
+            snapshot.groups = self.trust.groups.clone();
+            snapshot.active_group_id = self.trust.active_group_id.clone();
             let _ = self.events.try_send(CoreEvent::Changed);
         }
     }
@@ -453,11 +469,13 @@ impl Actor {
             // local user previously disabled.
             let allowed = self
                 .trust
-                .0
+                .devices
                 .get(id)
                 .map(|t| t.allowed.clone())
                 .unwrap_or_else(|| vec![1, 2]);
-            let old = self.trust.0.insert(
+            let old_store = self.trust.clone();
+            let new_peer = !self.trust.devices.contains_key(id);
+            self.trust.devices.insert(
                 id.to_string(),
                 TrustedDevice {
                     name: session.info.name.clone(),
@@ -465,18 +483,21 @@ impl Actor {
                     allowed,
                 },
             );
+            if new_peer {
+                self.trust
+                    .groups
+                    .iter_mut()
+                    .find(|g| g.id == DEFAULT_GROUP_ID)
+                    .unwrap()
+                    .members
+                    .push(id.to_owned());
+            }
             if let Err(error) = self.trust.save(&self.config.storage_dir) {
-                if let Some(old) = old {
-                    self.trust.0.insert(id.to_string(), old);
-                } else {
-                    self.trust.0.remove(id);
-                }
+                self.trust = old_store;
                 session.close();
                 return Err(error);
             }
-            session.send(Body::Ready(proto::Ready {
-                allowed: self.trust.0[id].allowed.clone(),
-            }))?;
+            session.send(Body::Ready(ready_for(&self.trust, id)))?;
             let session = self.sessions.get_mut(id).unwrap();
             session.pairing = false;
         }
@@ -485,6 +506,56 @@ impl Actor {
     }
     fn command(&mut self, command: Command) -> Result<()> {
         match command {
+            Command::CreateGroup { name } => {
+                self.add_group(uuid::Uuid::new_v4().to_string(), name)?;
+            }
+            Command::JoinGroup { group_id, name } => {
+                self.add_group(group_id, name)?;
+            }
+            Command::SelectGroup { group_id } => {
+                ensure!(
+                    self.trust.groups.iter().any(|g| g.id == group_id),
+                    "unknown group"
+                );
+                let old = self.trust.clone();
+                self.trust.active_group_id = group_id;
+                self.save_groups(old)?;
+            }
+            Command::DeleteGroup { group_id } => {
+                ensure!(group_id != DEFAULT_GROUP_ID, "cannot delete default group");
+                ensure!(
+                    self.trust.groups.iter().any(|g| g.id == group_id),
+                    "unknown group"
+                );
+                let old = self.trust.clone();
+                self.trust.groups.retain(|g| g.id != group_id);
+                if self.trust.active_group_id == group_id {
+                    self.trust.active_group_id = DEFAULT_GROUP_ID.into();
+                }
+                self.save_groups(old)?;
+            }
+            Command::SetGroupMember {
+                group_id,
+                device_id,
+                enabled,
+            } => {
+                ensure!(
+                    self.trust.devices.contains_key(&device_id),
+                    "device is not trusted"
+                );
+                let old = self.trust.clone();
+                let group = self
+                    .trust
+                    .groups
+                    .iter_mut()
+                    .find(|g| g.id == group_id)
+                    .context("unknown group")?;
+                group.members.retain(|id| id != &device_id);
+                if enabled {
+                    group.members.push(device_id);
+                }
+                self.save_groups(old)?;
+            }
             Command::MarkClipboardApplied { content_hash } => {
                 let hash = hex::decode(content_hash)?;
                 ensure!(hash.len() == 32, "invalid clipboard hash");
@@ -545,11 +616,13 @@ impl Actor {
                 }
             }
             Command::Unpair { device_id } => {
-                let old = self.trust.0.remove(&device_id);
+                let old = self.trust.clone();
+                self.trust.devices.remove(&device_id);
+                for group in &mut self.trust.groups {
+                    group.members.retain(|id| id != &device_id);
+                }
                 if let Err(error) = self.trust.save(&self.config.storage_dir) {
-                    if let Some(old) = old {
-                        self.trust.0.insert(device_id, old);
-                    }
+                    self.trust = old;
                     return Err(error);
                 }
                 self.pending_pair.remove(&device_id);
@@ -565,7 +638,7 @@ impl Actor {
                 ensure!([1, 2].contains(&capability), "unsupported capability");
                 let trusted = self
                     .trust
-                    .0
+                    .devices
                     .get_mut(&device_id)
                     .context("device is not trusted")?;
                 let old = trusted.allowed.clone();
@@ -574,13 +647,11 @@ impl Actor {
                     trusted.allowed.push(capability);
                 }
                 if let Err(error) = self.trust.save(&self.config.storage_dir) {
-                    self.trust.0.get_mut(&device_id).unwrap().allowed = old;
+                    self.trust.devices.get_mut(&device_id).unwrap().allowed = old;
                     return Err(error);
                 }
                 if let Some(session) = self.sessions.get(&device_id) {
-                    session.send(Body::Ready(proto::Ready {
-                        allowed: self.trust.0[&device_id].allowed.clone(),
-                    }))?;
+                    session.send(Body::Ready(ready_for(&self.trust, &device_id)))?;
                 }
             }
             Command::SendClipboard { mime_type, data } => {
@@ -602,29 +673,82 @@ impl Actor {
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)?
                         .as_millis() as i64,
+                    group_id: if self.trust.active_group_id == DEFAULT_GROUP_ID {
+                        String::new()
+                    } else {
+                        self.trust.active_group_id.clone()
+                    },
                 };
                 let mut sent = false;
+                let mut failures = 0;
                 for (id, session) in &self.sessions {
                     if self
                         .trust
-                        .0
+                        .devices
                         .get(id)
                         .is_some_and(|t| t.allowed.contains(&capability))
                         && session.remote_ready
                         && !session.pairing
                         && session.info.capabilities.contains(&capability)
                         && session.remote_allowed.contains(&capability)
+                        && self.trust.member(id)
+                        && group_compatible(session, &self.trust.active_group_id)
                     {
-                        session.send(Body::Clipboard(payload.clone()))?;
-                        sent = true;
+                        // A slow/offline peer must not prevent delivery to healthy members.
+                        match session.send(Body::Clipboard(payload.clone())) {
+                            Ok(()) => sent = true,
+                            Err(_) => failures += 1,
+                        }
                     }
                 }
                 if sent {
                     self.remember(hash, payload.id);
                 }
+                ensure!(
+                    failures == 0,
+                    "clipboard delivery failed for {failures} peer(s)"
+                );
             }
         }
         self.refresh();
+        Ok(())
+    }
+    fn add_group(&mut self, group_id: String, name: String) -> Result<()> {
+        validate_group_id(&group_id)?;
+        validate_group_name(&name)?;
+        ensure!(self.trust.groups.len() < 16, "too many groups (maximum 16)");
+        ensure!(
+            !self.trust.groups.iter().any(|g| g.id == group_id),
+            "group already exists; select it instead"
+        );
+        let old = self.trust.clone();
+        self.trust.groups.push(ClipboardGroup {
+            id: group_id.clone(),
+            name,
+            members: Vec::new(),
+        });
+        self.trust.active_group_id = group_id;
+        self.save_groups(old)
+    }
+
+    fn save_groups(&mut self, old: TrustStore) -> Result<()> {
+        if let Err(error) = self.trust.save(&self.config.storage_dir) {
+            self.trust = old;
+            return Err(error);
+        }
+        // Suppression history remains across switches: never echo the old group's
+        // system clipboard into a newly selected group.
+        for (id, session) in &self.sessions {
+            if self.trust.devices.contains_key(id) {
+                // Close on failure so the peer cannot retain obsolete grants.
+                if session
+                    .send(Body::Ready(ready_for(&self.trust, id)))
+                    .is_err()
+                {
+                    session.close();
+                }
+            }
+        }
         Ok(())
     }
     fn remember(&mut self, hash: Vec<u8>, id: String) {
@@ -651,10 +775,8 @@ impl Actor {
                     session.close();
                     return Ok(());
                 }
-                if let Some(trusted) = self.trust.0.get(&id) {
-                    session.send(Body::Ready(proto::Ready {
-                        allowed: trusted.allowed.clone(),
-                    }))?;
+                if self.trust.devices.contains_key(&id) {
+                    session.send(Body::Ready(ready_for(&self.trust, &id)))?;
                 }
                 self.sessions.insert(id.clone(), *session);
                 if self.pending_pair.remove(&id) {
@@ -694,14 +816,28 @@ impl Actor {
                                     && ready.allowed.iter().all(|c| [1, 2].contains(c)),
                                 "invalid permissions"
                             );
+                            ensure!(
+                                ready.clipboard_group_ids.len() <= 1,
+                                "too many active groups"
+                            );
+                            for group_id in &ready.clipboard_group_ids {
+                                validate_group_id(group_id)?;
+                            }
+                            ensure!(
+                                ready.clipboard_groups_supported
+                                    || ready.clipboard_group_ids.is_empty(),
+                                "invalid group negotiation"
+                            );
                             session.remote_ready = true;
                             session.remote_allowed = ready.allowed;
+                            session.remote_groups = ready.clipboard_group_ids;
+                            session.remote_groups_supported = ready.clipboard_groups_supported;
                         }
                         Body::Clipboard(payload) => {
                             let capability = validate_clipboard(&payload.mime_type, &payload.data)?;
                             ensure!(
                                 self.trust
-                                    .0
+                                    .devices
                                     .get(&id)
                                     .is_some_and(|t| t.allowed.contains(&capability))
                                     && session.remote_ready
@@ -709,6 +845,20 @@ impl Actor {
                                     && session.info.capabilities.contains(&capability),
                                 "unauthorized clipboard message"
                             );
+                            let group_id = if payload.group_id.is_empty() {
+                                DEFAULT_GROUP_ID
+                            } else {
+                                payload.group_id.as_str()
+                            };
+                            validate_group_id(group_id)?;
+                            // Normal config changes can race in-flight frames. Drop
+                            // those without changing trust or remembering their hash.
+                            if group_id != self.trust.active_group_id
+                                || !self.trust.member(&id)
+                                || !group_compatible(session, group_id)
+                            {
+                                return Ok(());
+                            }
                             ensure!(payload.origin_device_id == id, "invalid clipboard origin");
                             ensure!(
                                 uuid::Uuid::parse_str(&payload.id).is_ok(),
@@ -728,6 +878,7 @@ impl Actor {
                                 self.events
                                     .try_send(CoreEvent::ClipboardReceived {
                                         device_id: id.clone(),
+                                        group_id: group_id.to_owned(),
                                         mime_type: payload.mime_type,
                                         data: payload.data,
                                         content_hash: hex::encode(&payload.content_hash),
@@ -825,7 +976,7 @@ impl Actor {
             }
         }
         self.sessions.retain(|id, s| {
-            if (!self.trust.0.contains_key(id) || !s.remote_ready || s.pairing)
+            if (!self.trust.devices.contains_key(id) || !s.remote_ready || s.pairing)
                 && s.started.elapsed() > Duration::from_secs(120)
             {
                 s.close();
@@ -839,7 +990,7 @@ impl Actor {
         }
         let reconnect: Vec<_> = self
             .trust
-            .0
+            .devices
             .keys()
             .filter(|id| self.id < **id && self.advertisements.contains_key(*id))
             .cloned()
@@ -850,6 +1001,35 @@ impl Actor {
             }
         }
         self.refresh();
+    }
+}
+
+fn ready_for(trust: &TrustStore, id: &str) -> proto::Ready {
+    proto::Ready {
+        allowed: trust.devices[id].allowed.clone(),
+        clipboard_groups_supported: true,
+        clipboard_group_ids: if trust.member(id) {
+            vec![trust.active_group_id.clone()]
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+fn group_compatible(session: &Session, group_id: &str) -> bool {
+    session.remote_ready
+        && remote_group_matches(
+            session.remote_groups_supported,
+            &session.remote_groups,
+            group_id,
+        )
+}
+
+fn remote_group_matches(supported: bool, groups: &[String], group_id: &str) -> bool {
+    if supported {
+        groups.iter().any(|id| id == group_id)
+    } else {
+        group_id == DEFAULT_GROUP_ID
     }
 }
 
@@ -1006,6 +1186,8 @@ async fn serve_connection(
         remote_confirm: false,
         remote_ready: false,
         remote_allowed: Vec::new(),
+        remote_groups: Vec::new(),
+        remote_groups_supported: false,
         started: Instant::now(),
     })))
     .await?;
@@ -1040,6 +1222,23 @@ async fn serve_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_peers_only_match_default_and_new_peers_require_explicit_group() {
+        let custom = uuid::Uuid::new_v4().to_string();
+        assert!(remote_group_matches(false, &[], DEFAULT_GROUP_ID));
+        assert!(!remote_group_matches(false, &[], &custom));
+        assert!(!remote_group_matches(true, &[], DEFAULT_GROUP_ID));
+        assert!(!remote_group_matches(
+            true,
+            &[DEFAULT_GROUP_ID.into()],
+            &custom
+        ));
+        assert!(remote_group_matches(
+            true,
+            std::slice::from_ref(&custom),
+            &custom
+        ));
+    }
     #[test]
     fn applying_delayed_clipboard_refreshes_echo_window() {
         let dir = crate::test_directory();
@@ -1131,6 +1330,7 @@ mod tests {
                 &proto::Envelope {
                     body: Some(Body::Ready(proto::Ready {
                         allowed: vec![1, 2],
+                        ..Default::default()
                     })),
                 },
             )
@@ -1144,6 +1344,7 @@ mod tests {
                 mime_type: "text/plain".into(),
                 data,
                 timestamp: 0,
+                group_id: String::new(),
             };
             write_frame(
                 &mut send,

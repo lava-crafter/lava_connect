@@ -28,6 +28,14 @@ data class DeviceInfo(
     val pairingCode: String?,
     val text: Boolean,
     val image: Boolean,
+    val syncInGroup: Boolean,
+    val groupCompatible: Boolean,
+)
+
+data class ClipboardGroup(
+    val id: String,
+    val name: String,
+    val members: List<String>,
 )
 
 data class ConnectState(
@@ -36,6 +44,8 @@ data class ConnectState(
     val devices: List<DeviceInfo> = emptyList(),
     val error: String? = null,
     val imageAvailable: Boolean = false,
+    val activeGroupId: String = "00000000-0000-0000-0000-000000000000",
+    val groups: List<ClipboardGroup> = emptyList(),
 )
 
 class ConnectService : Service() {
@@ -143,6 +153,24 @@ class ConnectService : Service() {
                                 JSONArray(NativeCore.events(native))
                         }
                     val list = snapshot.optJSONArray("devices") ?: JSONArray()
+                    val groupList = snapshot.getJSONArray("groups")
+                    val groups =
+                        (0 until groupList.length()).map { i ->
+                            val group = groupList.getJSONObject(i)
+                            val members = group.getJSONArray("members")
+                            ClipboardGroup(
+                                group.getString("id"),
+                                group.getString("name"),
+                                (0 until members.length()).map { members.getString(it) },
+                            )
+                        }
+                    val activeGroupId = snapshot.getString("active_group_id")
+                    if (activeGroupId != _state.value.activeGroupId || groups != _state.value.groups) {
+                        // Do not apply a failed write from a previous group after switching.
+                        pendingClipboard.clear()
+                        latestImage = null
+                        _state.value = _state.value.copy(imageAvailable = false)
+                    }
                     val devices =
                         (0 until list.length()).map { i ->
                             list.getJSONObject(i).let { d ->
@@ -159,6 +187,8 @@ class ConnectService : Service() {
                                     },
                                     d.optBoolean("text_enabled"),
                                     d.optBoolean("image_enabled"),
+                                    d.optBoolean("sync_in_group"),
+                                    d.optBoolean("group_compatible"),
                                 )
                             }
                         }
@@ -167,6 +197,8 @@ class ConnectService : Service() {
                             running = snapshot.optBoolean("running"),
                             localId = snapshot.optString("device_id"),
                             devices = devices,
+                            groups = groups,
+                            activeGroupId = activeGroupId,
                             error =
                                 snapshot.optString("error").takeUnless { it == "null" || it.isBlank() } ?: _state.value.error,
                         )
@@ -205,6 +237,15 @@ class ConnectService : Service() {
 
                 "clipboard_received" -> {
                     try {
+                        val groupId = event.getString("group_id")
+                        val deviceId = event.getString("device_id")
+                        val state = _state.value
+                        if (groupId != state.activeGroupId ||
+                            state.groups.none { it.id == groupId && deviceId in it.members } ||
+                            state.devices.none { it.id == deviceId && it.trusted }
+                        ) {
+                            continue
+                        }
                         val mime = event.getString("mime_type")
                         val clip =
                             withContext(Dispatchers.IO) {

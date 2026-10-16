@@ -1,5 +1,7 @@
 # 协议 v1
 
+组扩展为 v1 additive：Ready 可协商 `clipboard_groups_supported` 与 `clipboard_group_ids`；只公布当前组中将该 peer 列为成员的组。ClipboardPayload 的 `group_id` 为空表示默认组。旧 peer 只能使用默认组，禁止向其发送自定义组内容。详细成员/兼容规则见[同步组说明](groups.md)。
+
 发现服务：`_lava-connect._udp.local.`，TXT：`id`、`name`、`platform`、`version=1`。广告不可信，仅用于定位。
 连接后，广告 `id` 必须等于 TLS 对端叶证书 DER 的 SHA-256（64 位小写十六进制），Hello 中的 id 也必须一致。
 

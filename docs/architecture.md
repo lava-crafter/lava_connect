@@ -1,5 +1,7 @@
 # v0.1 架构
 
+同步组及其持久化、成员管理和切组事件语义见[同步组说明](groups.md)。组配置与设备信任共存于 `trusted_devices.json` version 2；旧 bare device map 在加载时迁移，首次写入保存新格式。任何信任/组持久化错误均 fail closed：核心断开或停止，修复存储后重启。
+
 ```text
 Compose → ViewModel → Repository → ConnectService → JNI ┐
                                                        ├→ lava-core → QUIC / mDNS
