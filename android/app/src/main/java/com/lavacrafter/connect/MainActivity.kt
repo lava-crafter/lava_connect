@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
         Text("Lava Connect", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Android restricts background clipboard access. Use manual send; incoming clipboard is applied only while this screen is foreground.",
+            "Android restricts background clipboard reading. Incoming text and images are written in the background; if writing fails, return here to retry.",
         )
         Spacer(Modifier.height(10.dp))
         Row {

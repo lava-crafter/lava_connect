@@ -16,7 +16,7 @@ QUIC 使用 TLS 1.3、ALPN `lava-connect/1`，两端都必须提供证书并证�
 剪贴板类型：UTF-8 `text/plain`、`image/png`，最大 8 MiB。
 PNG 必须有完整 IHDR/IEND，尺寸限制为 1600 万像素；核心不解码图像像素，平台层负责实际解码。
 最近 256 个 ID 和 hash 用于去重；30 秒内相同 hash 不从本地 watcher 重发。此窗口也会抑制相同内容的重复手动发送。
-平台实际写入时提交 MarkClipboardApplied 刷新该 hash 的抑制窗口，覆盖 Android 在后台长时间等待后才写入的情况；已有 PNG 不重新编码，保留同一 hash。
+平台实际写入前提交 MarkClipboardApplied 刷新该 hash 的抑制窗口；Android 收到后直接尝试后台写入，抛出异常则保留最新内容，回前台重试时再次刷新窗口。已有 PNG 不重新编码，保留同一 hash。
 远端内容不被转发给第三台设备。payload 不会进入日志。
 
 配对码：TLS exporter（label `lava-connect pairing v1`）与排序后的双方证书指纹一起 SHA-256，前 32 位模 1,000,000，格式 `123 456`。与当前 TLS 会话绑定，可阻止中间人向两端显示同一码（用户仍需真实比较）。

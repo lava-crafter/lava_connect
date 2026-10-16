@@ -7,6 +7,7 @@
 - 双向 UTF-8 / PNG 剪贴板协议、大小限制、防回环、单设备能力授权。
 - Slint Linux UI、Wayland clipboard、系统托盘、headless 与 systemd 模板。
 - Compose Android UI、JNI 和前台连接服务，普通模式剪贴板。
+- Linux → Android 接收剪贴板直接尝试后台写入文字/PNG；异常时保留最新内容并回前台重试，后台读取仍受限。
 - 核心自动测试、构建脚本、CI 和手动验收说明。
 
 真实设备验收和独立安全审计未完成，不是稳定版发布声明。

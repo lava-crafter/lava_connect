@@ -39,6 +39,10 @@ data class ConnectState(
 )
 
 class ConnectService : Service() {
+    private companion object {
+        const val CLIPBOARD_WRITE_ERROR = "Unable to write received clipboard; return to the app to retry"
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     @Volatile private var handle = 0L
@@ -50,8 +54,7 @@ class ConnectService : Service() {
     val state = _state.asStateFlow()
     private var foreground = false
     private var applyPending: (() -> Unit)? = null
-    private var pending: ClipData? = null
-    private var pendingHash: String? = null
+    private val pendingClipboard = PendingClipboard<ClipData>()
     private var latestImage: Uri? = null
     private val binder = LocalBinder()
 
@@ -224,15 +227,16 @@ class ConnectService : Service() {
                                     ClipData("Lava Connect image", arrayOf("image/png"), ClipData.Item(uri))
                                 }
                             }
-                        pending = clip
-                        pendingHash = event.getString("content_hash")
+                        pendingClipboard.offer(clip, event.getString("content_hash"))
                         if (mime ==
                             "image/png"
                         ) {
                             latestImage = clip.getItemAt(0).uri
                             _state.value = _state.value.copy(imageAvailable = true)
                         }
-                        applyPending?.invoke()
+                        // Android restricts background reads, not ordinary clipboard writes.
+                        // Receiving must not depend on an Activity being RESUMED.
+                        applyReceivedClipboard()
                     } catch (e: Exception) {
                         fail(e.message ?: "Unable to receive clipboard")
                     }
@@ -247,16 +251,26 @@ class ConnectService : Service() {
     }
 
     fun applyReceivedClipboard() {
-        pending?.let { clip ->
-            // Queue before setPrimaryClip: delayed background events need a fresh
-            // echo-suppression window at actual application, not just arrival.
-            NativeCore.command(
-                requireHandle(),
-                JSONObject().put("type", "mark_clipboard_applied").put("content_hash", pendingHash).toString(),
-            )
-            (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
-            pending = null
-            pendingHash = null
+        try {
+            val applied =
+                pendingClipboard.apply(
+                    markApplied = { hash ->
+                        NativeCore.command(
+                            requireHandle(),
+                            JSONObject().put("type", "mark_clipboard_applied").put("content_hash", hash).toString(),
+                        )
+                    },
+                    write = { clip ->
+                        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                    },
+                )
+            if (applied && _state.value.error == CLIPBOARD_WRITE_ERROR) {
+                _state.value = _state.value.copy(error = null)
+            }
+        } catch (_: Exception) {
+            // Keep the latest received clip. setForeground retries without reading
+            // the clipboard, and a platform refusal must not stop the connection.
+            fail(CLIPBOARD_WRITE_ERROR)
         }
     }
 
