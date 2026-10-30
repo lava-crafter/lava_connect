@@ -10,18 +10,24 @@ ktlint { version.set("1.8.0") }
 // Keep signing credentials outside the repository. Paths can be overridden
 // with Gradle properties or environment variables for other build machines.
 // The properties file is consumed by Gradle and is never copied into outputs.
-val signingPropertiesPath = providers.gradleProperty("lavaConnectSigningProperties")
-    .orElse(providers.environmentVariable("LAVA_CONNECT_SIGNING_PROPERTIES"))
-    .orElse("${System.getProperty("user.home")}/.android/release-signing.properties")
-    .get()
+val signingPropertiesPath =
+    providers
+        .gradleProperty("lavaConnectSigningProperties")
+        .orElse(providers.environmentVariable("LAVA_CONNECT_SIGNING_PROPERTIES"))
+        .orElse("${System.getProperty("user.home")}/.android/release-signing.properties")
+        .get()
 val releaseSigningFile = file(signingPropertiesPath)
-val keystorePath = providers.gradleProperty("lavaConnectKeystore")
-    .orElse(providers.environmentVariable("LAVA_CONNECT_KEYSTORE"))
-    .orElse("${System.getProperty("user.home")}/.android/my-release-key.jks")
-    .get()
-val releaseSigning = Properties().apply {
-    if (releaseSigningFile.isFile) releaseSigningFile.inputStream().use { load(it) }
-}
+val keystorePath =
+    providers
+        .gradleProperty("lavaConnectKeystore")
+        .orElse(providers.environmentVariable("LAVA_CONNECT_KEYSTORE"))
+        .orElse("${System.getProperty("user.home")}/.android/my-release-key.jks")
+        .get()
+val releaseSigning =
+    Properties().apply {
+        if (releaseSigningFile.isFile) releaseSigningFile.inputStream().use { load(it) }
+    }
+
 fun signingProperty(vararg names: String): String? =
     names.firstNotNullOfOrNull { name -> releaseSigning.getProperty(name)?.takeIf(String::isNotBlank) }
 
@@ -44,19 +50,24 @@ android {
         }
         release {
             if (releaseSigningFile.isFile) {
-                signingConfig = signingConfigs.create("userRelease").apply {
-                    storeFile = file(keystorePath)
-                    storePassword = signingProperty("storePassword", "keystorePassword")
-                        ?: error("Missing storePassword in ~/.android/release-signing.properties")
-                    keyAlias = signingProperty("keyAlias", "alias")
-                        ?: error("Missing keyAlias in ~/.android/release-signing.properties")
-                    keyPassword = signingProperty("keyPassword")
-                        ?: error("Missing keyPassword in ~/.android/release-signing.properties")
-                }
+                signingConfig =
+                    signingConfigs.create("userRelease").apply {
+                        storeFile = file(keystorePath)
+                        storePassword = signingProperty("storePassword", "keystorePassword")
+                            ?: error("Missing storePassword in ~/.android/release-signing.properties")
+                        keyAlias = signingProperty("keyAlias", "alias")
+                            ?: error("Missing keyAlias in ~/.android/release-signing.properties")
+                        keyPassword = signingProperty("keyPassword")
+                            ?: error("Missing keyPassword in ~/.android/release-signing.properties")
+                    }
             }
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        aidl = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -75,4 +86,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

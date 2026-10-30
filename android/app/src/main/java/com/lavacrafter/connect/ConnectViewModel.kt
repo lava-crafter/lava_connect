@@ -97,6 +97,8 @@ class ConnectViewModel(
 
     fun receivedImage() = repository.receivedImage()
 
+    fun updateBackgroundRead() = repository.updateBackgroundRead()
+
     fun confirmPair(
         id: String,
         code: String,

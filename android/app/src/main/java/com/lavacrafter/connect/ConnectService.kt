@@ -7,6 +7,7 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
@@ -17,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 data class DeviceInfo(
@@ -46,6 +50,7 @@ data class ConnectState(
     val imageAvailable: Boolean = false,
     val activeGroupId: String = "00000000-0000-0000-0000-000000000000",
     val groups: List<ClipboardGroup> = emptyList(),
+    val backgroundRead: String? = null,
 )
 
 class ConnectService : Service() {
@@ -67,6 +72,14 @@ class ConnectService : Service() {
     private val pendingClipboard = PendingClipboard<ClipData>()
     private var latestImage: Uri? = null
     private val binder = LocalBinder()
+    private var logWatcher: Job? = null
+
+    @Volatile private var logProcess: Process? = null
+    private val readThrottle = ReadThrottle()
+
+    // Intentionally empty: in the background Android refuses to call it and logs the denial
+    // that the log watcher reacts to. Foreground sending stays in MainActivity's listener.
+    private val denialTrigger = ClipboardManager.OnPrimaryClipChangedListener { }
 
     inner class LocalBinder : Binder() {
         fun service() = this@ConnectService
@@ -141,6 +154,7 @@ class ConnectService : Service() {
                             NativeCore.stop(native)
                         } else {
                             handle = native
+                            updateBackgroundRead()
                         }
                     }
                 }
@@ -288,7 +302,75 @@ class ConnectService : Service() {
 
     fun setForeground(callback: (() -> Unit)?) {
         applyPending = callback
+        // Android 13+ asks before granting log access, which only works in the foreground,
+        // so (re)start a stopped watcher whenever the UI is shown.
+        if (callback != null) updateBackgroundRead()
         callback?.invoke()
+    }
+
+    /** Starts or stops the KDE Connect-style log watcher to match settings and permissions. */
+    fun updateBackgroundRead() {
+        val wanted = !destroyed && handle != 0L && BackgroundRead.enabled(this) && BackgroundRead.ready(this)
+        if (wanted && logWatcher?.isActive != true) {
+            startLogWatcher()
+        } else if (!wanted) {
+            stopLogWatcher()
+        }
+    }
+
+    private fun startLogWatcher() {
+        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).addPrimaryClipChangedListener(denialTrigger)
+        val matcher = DenialLogMatcher(packageName)
+        // Only follow ClipboardService errors logged from now on.
+        val since = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        _state.value = _state.value.copy(backgroundRead = "Background reading active")
+        logWatcher =
+            scope.launch {
+                val ended =
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val process =
+                                ProcessBuilder("logcat", "-T", since, BackgroundRead.logcatFilter(), "*:S")
+                                    .redirectErrorStream(true)
+                                    .start()
+                            logProcess = process
+                            process.inputStream.bufferedReader().useLines { lines ->
+                                for (line in lines) {
+                                    // Log lines are never stored or sent; only the match is used.
+                                    if (matcher.matches(line)) withContext(Dispatchers.Main) { launchBackgroundReader() }
+                                }
+                            }
+                        }
+                        "Log access ended; open Lava Connect to resume background reading"
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        e.message ?: "Unable to read system log"
+                    } finally {
+                        logProcess?.destroy()
+                        logProcess = null
+                    }
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).removePrimaryClipChangedListener(denialTrigger)
+                _state.value = _state.value.copy(backgroundRead = ended)
+            }
+    }
+
+    private fun stopLogWatcher() {
+        // Destroying the process closes the stream that blocks the IO thread.
+        logProcess?.destroy()
+        logWatcher?.cancel()
+        logWatcher = null
+        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).removePrimaryClipChangedListener(denialTrigger)
+        _state.value = _state.value.copy(backgroundRead = null)
+    }
+
+    private fun launchBackgroundReader() {
+        if (!readThrottle.tryLaunch(SystemClock.elapsedRealtime())) return
+        try {
+            startActivity(ClipboardReadActivity.intent(this))
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(backgroundRead = e.message ?: "Unable to open clipboard reader")
+        }
     }
 
     fun applyReceivedClipboard() {
@@ -302,6 +384,7 @@ class ConnectService : Service() {
                         )
                     },
                     write = { clip ->
+                        readThrottle.localWrite(SystemClock.elapsedRealtime())
                         (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
                     },
                 )
@@ -317,8 +400,21 @@ class ConnectService : Service() {
 
     fun receivedImage(): Uri? = latestImage
 
-    fun sendCurrentClipboard() {
-        val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip ?: error("Clipboard is empty")
+    fun sendCurrentClipboard() =
+        sendClip((getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip ?: error("Clipboard is empty"))
+
+    /** Clip read by [ClipboardReadActivity] without an explicit user action. */
+    fun sendBackgroundClip(clip: ClipData) {
+        // Password managers mark secrets sensitive; only an explicit send may forward them.
+        if (clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true) return
+        try {
+            sendClip(clip)
+        } catch (e: Exception) {
+            fail(e.message ?: "Unable to send clipboard")
+        }
+    }
+
+    private fun sendClip(clip: ClipData) {
         require(clip.itemCount > 0)
         val item = clip.getItemAt(0)
         if (item.uri != null &&
@@ -396,6 +492,7 @@ class ConnectService : Service() {
     }
 
     private fun endConnection() {
+        stopLogWatcher()
         if (handle != 0L) {
             runCatching { NativeCore.stop(handle) }
             handle = 0L
