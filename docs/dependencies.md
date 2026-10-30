@@ -9,13 +9,13 @@
 | 依赖 | 版本 |
 |---|---|
 | anyhow / serde / serde_json | 1.0.104 / 1.0.229 / 1.0.154 |
-| tokio / tracing / tracing-subscriber | 1.53.3 / 0.1.44 / 0.3.23 |
+| tokio / tracing / tracing-subscriber | 1.54.1 / 0.1.44 / 0.3.23 |
 | quinn / rustls / rcgen | 0.11.12 / 0.23.46 / 0.14.10 |
 | aes-gcm / sha2 / rand | 0.11.1 / 0.11.1 / 0.10.3 |
-| hex / uuid / fs2 / tempfile | 0.4.3 / 1.28.0 / 0.4.3 / 3.27.0 |
-| mdns-sd | 0.21.5 |
+| hex / uuid / fs2 / tempfile | 0.4.3 / 1.29.0 / 0.4.3 / 3.27.0 |
+| mdns-sd | 0.21.6 |
 | prost / prost-build / protoc-bin-vendored | 0.14.4 / 0.14.4 / 3.3.0 |
-| slint / slint-build / ksni / ctrlc | 1.18.1 / 1.18.1 / 0.3.6 / 3.5.2 |
+| slint / slint-build / ksni / ctrlc | 1.18.1 / 1.18.1 / 0.3.7 / 3.5.2 |
 | base64 / jni | 0.23.1 / 0.22.4 |
 
 来源：[crates.io API](https://crates.io/api/v1/crates) 中各 crate 的非 yanked 稳定版本。Rust 使用 stable channel；本次工具链为 1.99.1。
@@ -24,7 +24,7 @@
 
 | 依赖 | 版本 |
 |---|---|
-| Gradle / Android Gradle Plugin | 9.8.1 / 9.4.1 |
+| Gradle / Android Gradle Plugin | 9.8.2 / 9.4.1 |
 | Kotlin Compose compiler plugin | 2.4.21 |
 | ktlint Gradle plugin / ktlint CLI | 14.2.0 / 1.8.0 |
 | AndroidX core-ktx / activity-compose | 1.19.1 / 1.13.0 |
