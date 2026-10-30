@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.lavacrafter.connect
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,28 +32,41 @@ class BackgroundClipboardTest {
     }
 
     @Test
-    fun throttlesRepeatedLaunches() {
+    fun defersRepeatedLaunchesInsteadOfDropping() {
         val throttle = ReadThrottle(interval = 1_500, suppress = 2_000)
-        assertTrue(throttle.tryLaunch(10_000))
-        assertFalse(throttle.tryLaunch(11_000))
-        assertTrue(throttle.tryLaunch(11_500))
+        assertEquals(0L, throttle.schedule(10_000))
+        // A second copy inside the interval is read once the interval ends.
+        assertEquals(500L, throttle.schedule(11_000))
+        // Further copies before that launch are covered by it.
+        assertNull(throttle.schedule(11_200))
+        assertEquals(1_200L, throttle.schedule(11_800))
+        assertEquals(0L, throttle.schedule(20_000))
+    }
+
+    @Test
+    fun coalescesDuplicateDenialOfOneCopy() {
+        val throttle = ReadThrottle(interval = 1_500, suppress = 2_000, coalesce = 300)
+        assertEquals(0L, throttle.schedule(10_000))
+        // Samsung logs a second denial for the same copy shortly after the first.
+        assertNull(throttle.schedule(10_185))
+        assertEquals(1_200L, throttle.schedule(10_300))
     }
 
     @Test
     fun suppressesDenialCausedByLocalWrite() {
         val throttle = ReadThrottle(interval = 1_500, suppress = 2_000)
         throttle.localWrite(10_000)
-        assertFalse(throttle.tryLaunch(10_100))
-        assertFalse(throttle.tryLaunch(11_999))
-        assertTrue(throttle.tryLaunch(12_000))
+        assertNull(throttle.schedule(10_100))
+        assertNull(throttle.schedule(11_999))
+        assertEquals(0L, throttle.schedule(12_000))
     }
 
     @Test
     fun suppressedDenialDoesNotDelayNextCopy() {
         val throttle = ReadThrottle(interval = 1_500, suppress = 2_000)
         throttle.localWrite(10_000)
-        assertFalse(throttle.tryLaunch(10_100))
+        assertNull(throttle.schedule(10_100))
         // The suppressed attempt must not count as a launch.
-        assertTrue(throttle.tryLaunch(12_100))
+        assertEquals(0L, throttle.schedule(12_100))
     }
 }

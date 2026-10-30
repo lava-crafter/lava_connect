@@ -17,6 +17,7 @@ internal class DenialLogMatcher(
 internal class ReadThrottle(
     private val interval: Long = 1_500,
     private val suppress: Long = 2_000,
+    private val coalesce: Long = 300,
 ) {
     private var lastLaunch: Long? = null
     private var lastWrite: Long? = null
@@ -26,10 +27,18 @@ internal class ReadThrottle(
         lastWrite = now
     }
 
-    fun tryLaunch(now: Long): Boolean {
-        if (lastWrite?.let { now - it < suppress } == true) return false
-        if (lastLaunch?.let { now - it < interval } == true) return false
-        lastLaunch = now
-        return true
+    /**
+     * Returns how long to wait before launching, or null to skip this denial. A copy inside the
+     * interval is deferred, not dropped; one launch still pending already reads the newest clip.
+     * Some ROMs (Samsung) log two denials per copy ~50-200 ms apart; the second one is coalesced
+     * into the launch that just read the clip instead of opening the reader a second time.
+     */
+    fun schedule(now: Long): Long? {
+        if (lastWrite?.let { now - it < suppress } == true) return null
+        val previous = lastLaunch
+        if (previous != null && now < previous + coalesce) return null
+        val at = previous?.let { maxOf(now, it + interval) } ?: now
+        lastLaunch = at
+        return at - now
     }
 }

@@ -57,7 +57,13 @@ internal object ShizukuGrant {
                         }
                     }
                 Shizuku.addRequestPermissionResultListener(listener)
-                Shizuku.requestPermission(REQUEST_CODE)
+                try {
+                    Shizuku.requestPermission(REQUEST_CODE)
+                } catch (e: Exception) {
+                    // The binder can die after status(); without this the UI stays on "Granting…".
+                    Shizuku.removeRequestPermissionResultListener(listener)
+                    done(e.message ?: "Shizuku is not running")
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -40,8 +41,14 @@ class ClipboardReadActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(View(this), ViewGroup.LayoutParams(1, 1))
+        // Shrink the window itself, not just its content: a full-screen translucent window would
+        // swallow every touch, while NOT_TOUCH_MODAL passes through touches outside a 1x1 window.
+        window.setLayout(1, 1)
+        window.setGravity(Gravity.TOP or Gravity.START)
         window.setDimAmount(0f)
         window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        // Never linger over other apps, whether focus never arrives or the service is unavailable.
+        window.decorView.postDelayed({ finish() }, 2_000)
         // Bind early so the service is usually connected by the time focus arrives. Flag 0 never
         // starts the connection service; without it there is nothing to send to.
         bound = bindService(Intent(this, ConnectService::class.java), connection, 0)
@@ -58,8 +65,6 @@ class ClipboardReadActivity : Activity() {
             return
         }
         flush()
-        // Never linger over other apps waiting for an unavailable service.
-        window.decorView.postDelayed({ finish() }, 1_000)
     }
 
     private fun flush() {
