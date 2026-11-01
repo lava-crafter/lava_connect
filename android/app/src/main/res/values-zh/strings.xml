@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <string name="common_confirm">确认</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_done">完成</string>
+    <string name="common_more_actions">更多操作</string>
+    <string name="common_expanded">已展开</string>
+    <string name="common_collapsed">已收起</string>
+    <string name="lava_menu_submenu_expanded">已展开</string>
+    <string name="lava_menu_submenu_collapsed">已收起</string>
+
+    <string name="nav_devices">设备</string>
+    <string name="nav_groups">剪贴板组</string>
+    <string name="nav_settings">设置</string>
+
+    <string name="local_device">本机</string>
+    <string name="local_running">同步中</string>
+    <string name="local_stopped">已停止</string>
+    <string name="local_start">开始</string>
+    <string name="local_stop">停止</string>
+    <string name="local_note">收到的文字和图片会在后台写入剪贴板。打开本应用时复制的内容会自动发送；设置后台读取后，在任意应用中复制都会发送。</string>
+
+    <string name="devices_empty_title">还没有设备</string>
+    <string name="devices_empty_running">同一局域网中的设备会自动出现在这里。</string>
+    <string name="devices_empty_stopped">开始同步后即可发现局域网中的设备。</string>
+    <string name="devices_select_hint">选择一台设备查看详情</string>
+
+    <string name="device_state_available">可配对</string>
+    <string name="device_state_connecting">连接中</string>
+    <string name="device_state_pairing">配对中</string>
+    <string name="device_state_connected">已连接</string>
+    <string name="device_state_offline">离线</string>
+    <string name="device_trusted">已信任</string>
+    <string name="device_pair">配对</string>
+    <string name="device_confirm_pairing">核对代码</string>
+    <string name="device_unpair">撤销信任</string>
+    <string name="device_unpair_title">撤销对 %1$s 的信任？</string>
+    <string name="device_unpair_message">撤销后需要重新配对才能同步。</string>
+    <string name="device_copy_id">复制设备 ID</string>
+    <string name="device_fingerprint">设备 ID / 指纹</string>
+    <string name="device_sync_in_group">在当前组中同步</string>
+    <string name="device_group_ready">对方也已选中此组</string>
+    <string name="device_group_not_ready">对方需要加入并选中此组</string>
+    <string name="device_text">文字剪贴板</string>
+    <string name="device_text_description">发送和接收复制的文字</string>
+    <string name="device_image">图片剪贴板</string>
+    <string name="device_image_description">发送和接收复制的图片</string>
+    <string name="device_not_trusted">配对后才能与这台设备同步剪贴板。</string>
+    <string name="device_back">返回设备列表</string>
+
+    <string name="pairing_title">确认配对</string>
+    <string name="pairing_message">只有两端显示相同的代码和这个设备 ID 时才确认。</string>
+    <string name="pairing_code">配对代码</string>
+
+    <string name="received_image_title">收到图片</string>
+    <string name="received_image_description">分享到其他应用即可保存或打开。</string>
+    <string name="received_image_share">分享</string>
+    <string name="received_image_chooser">分享收到的图片</string>
+
+    <string name="send_menu">发送</string>
+    <string name="send_clipboard">发送剪贴板</string>
+    <string name="send_image">发送图片</string>
+    <string name="send_text">发送文字</string>
+    <string name="send_text_label">要发送的文字</string>
+    <string name="send_action">发送</string>
+
+    <string name="groups_default">默认</string>
+    <string name="groups_active">当前</string>
+    <string name="groups_create">创建组</string>
+    <string name="groups_join">加入组</string>
+    <string name="groups_name">组名称</string>
+    <string name="groups_code">组码</string>
+    <string name="groups_join_name">在本机显示的名称</string>
+    <string name="groups_code_note">组码只用来标识组，不是密码，也不能代替配对授权。</string>
+    <string name="groups_copy_code">复制组码</string>
+    <string name="groups_delete">删除组</string>
+    <string name="groups_delete_title">删除 %1$s？</string>
+    <string name="groups_delete_message">此组内的同步会停止，本机回到默认组。</string>
+    <string name="groups_members">成员</string>
+    <string name="groups_members_empty">配对设备后即可把它加入此组。</string>
+    <string name="groups_stopped">开始同步后才能管理剪贴板组。</string>
+    <string name="groups_menu">组操作</string>
+
+    <string name="settings_connection">连接</string>
+    <string name="settings_sync">剪贴板同步</string>
+    <string name="settings_sync_on">正在后台运行</string>
+    <string name="settings_sync_off">已停止</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_description">跟随系统，或固定为浅色、深色</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_accent">强调色</string>
+    <string name="settings_accent_description">用于按钮、选中状态和界面底色</string>
+    <string name="settings_color_blue">蓝色</string>
+    <string name="settings_color_light_blue">浅蓝</string>
+    <string name="settings_color_indigo">靛蓝</string>
+    <string name="settings_color_cyan">青色</string>
+    <string name="settings_color_deep_blue">深蓝</string>
+    <string name="settings_shape">圆角风格</string>
+    <string name="settings_shape_description">全局使用圆角或直角</string>
+    <string name="settings_shape_expressive">圆角</string>
+    <string name="settings_shape_square">直角</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_version">版本</string>
+    <string name="settings_license">许可证</string>
+    <string name="settings_license_description">GPL-3.0-or-later · 无担保 · © 2026 Lava Connect contributors</string>
+    <string name="settings_test_native">测试原生核心</string>
+    <string name="settings_test_native_description">仅调试版显示</string>
+
+    <string name="background_title">后台读取</string>
+    <string name="background_intro">其他应用复制内容时，Lava Connect 会短暂打开一个不可见的窗口读取并发送剪贴板。Shizuku 只在授予权限时需要一次。</string>
+    <string name="background_auto_send">后台自动发送</string>
+    <string name="background_auto_send_description">在任意应用中复制都会发送</string>
+    <string name="background_not_set_up">请先授予下面的权限</string>
+    <string name="background_shizuku">Shizuku</string>
+    <string name="background_shizuku_unavailable">未运行</string>
+    <string name="background_shizuku_needs_permission">需要授权</string>
+    <string name="background_shizuku_ready">就绪</string>
+    <string name="background_grant">通过 Shizuku 授权</string>
+    <string name="background_granting">正在授权…</string>
+    <string name="background_logs">日志访问</string>
+    <string name="background_logs_granted">已授予</string>
+    <string name="background_logs_restart">已授予，需要重启</string>
+    <string name="background_missing">缺失</string>
+    <string name="background_restart">重启应用以生效</string>
+    <string name="background_overlay">从后台启动（悬浮窗）</string>
+    <string name="background_manual">不用 Shizuku 授权</string>
+    <string name="background_manual_description">在电脑上用 adb 运行一次</string>
+    <string name="background_privacy">日志访问权限允许应用读取全部系统日志。Lava Connect 只关注 ClipboardService 的错误，不会保存或发送日志内容。标记为敏感（如密码）的剪贴内容不会自动发送。Android 13 及以上打开本页面时可能会询问是否允许日志访问。</string>
+
+    <string name="error_local_network">发现和连接设备需要局域网权限</string>
+    <string name="error_no_share_target">没有可以接收图片的应用</string>
+    <string name="error_native_missing">原生核心不可用：请用 scripts/build-android.sh 构建</string>
+</resources>

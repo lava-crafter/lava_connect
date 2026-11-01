@@ -2505,6 +2505,8 @@ dependencies = [
  "ctrlc",
  "ksni",
  "lava-core",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "tokio",

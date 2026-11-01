@@ -3,7 +3,8 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc='Secure Android and Linux clipboard synchronization'
 arch=('x86_64' 'aarch64')
-license=('GPL-3.0-or-later')
+# Apache-2.0: Material Symbols icons embedded in the UI (linux/app/ui/icons).
+license=('GPL-3.0-or-later' 'Apache-2.0')
 depends=('wl-clipboard' 'libxkbcommon' 'wayland' 'dbus' 'fontconfig')
 makedepends=('rust' 'git')
 # Local source package: run scripts/build-linux.sh, then package manually or

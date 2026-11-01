@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { App } from "../app.slint";
+import { Icons } from "../components/icons.slint";
+import { Interactive, Switch, Segmented, VDivider, HDivider } from "../components/controls.slint";
+import { Card, SectionHeader, ListRow, CopyableId, Note } from "../components/surfaces.slint";
+
+component Swatch inherits Interactive {
+    in property <color> swatch;
+    in property <bool> selected;
+    width: 36px;
+    height: 36px;
+    radius: Theme.radius-sm;
+    border-width: root.selected ? 2px : 0px;
+    border-color: Theme.c.primary;
+    accessible-role: radio-button;
+    accessible-checked: root.selected;
+    Rectangle {
+        width: 26px;
+        height: 26px;
+        border-radius: Theme.square ? 0px : 8px;
+        background: root.swatch;
+        border-width: 1px;
+        border-color: Theme.c.outline;
+    }
+}
+
+export component SettingsPage inherits HorizontalLayout {
+    in-out property <int> category;
+    property <[{icon: image, title: string}]> categories: [
+        { icon: Icons.sync, title: @tr("Connection") },
+        { icon: Icons.palette, title: @tr("Appearance") },
+        { icon: Icons.info, title: @tr("About") },
+    ];
+
+    Rectangle {
+        width: 224px;
+        background: Theme.c.surface-container-low;
+        VerticalLayout {
+            padding: Theme.space-md;
+            spacing: Theme.space-sm;
+            alignment: start;
+            for item[index] in root.categories: Card {
+                selected: index == root.category;
+                inset: Theme.space-md;
+                accessible-label: item.title;
+                clicked => { root.category = index; }
+                HorizontalLayout {
+                    spacing: Theme.space-md;
+                    Image {
+                        source: item.icon;
+                        colorize: index == root.category ? Theme.c.on-primary-container : Theme.c.on-surface-variant;
+                        width: 20px;
+                        height: 20px;
+                    }
+                    Text {
+                        text: item.title;
+                        color: index == root.category ? Theme.c.on-primary-container : Theme.c.on-surface;
+                        font-size: Theme.title-small;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+    VDivider { }
+    ScrollView {
+        horizontal-stretch: 1;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: min(760px, root.width - 224px - 2 * Theme.space-xl);
+                padding-top: Theme.space-xl;
+                padding-bottom: Theme.space-xl;
+                spacing: Theme.space-xs;
+                alignment: start;
+
+                if root.category == 0: VerticalLayout {
+                    spacing: Theme.space-xs;
+                    SectionHeader { text: @tr("Connection"); }
+                    ListRow {
+                        icon: Icons.sync;
+                        title: @tr("Clipboard sync");
+                        description: App.paused
+                            ? @tr("Paused. Copies are neither sent nor applied.")
+                            : @tr("Copies are sent to connected devices automatically");
+                        Switch {
+                            checked: !App.paused;
+                            y: (parent.height - self.height) / 2;
+                            toggled => { App.toggle-pause(); }
+                        }
+                    }
+                    ListRow {
+                        icon: Icons.visibility-off;
+                        title: @tr("Closing the window");
+                    }
+                    Note {
+                        text: @tr("Lava Connect keeps syncing from the system tray. Use Quit in the tray menu or Ctrl+Q to stop it.");
+                    }
+                    HDivider { }
+                    CopyableId {
+                        label: @tr("This device · ID / fingerprint");
+                        value: App.identity;
+                        copy-label: @tr("Copy device ID");
+                        copy(value) => { App.copy(value); }
+                    }
+                    Text {
+                        text: @tr("Wayland sessions need wl-clipboard. Android receives in the background and sends while open, or from any app once background reading is set up.");
+                        color: Theme.c.on-surface-variant;
+                        font-size: Theme.body-small;
+                        wrap: word-wrap;
+                    }
+                }
+
+                if root.category == 1: VerticalLayout {
+                    spacing: Theme.space-md;
+                    SectionHeader { text: @tr("Appearance"); }
+                    ListRow {
+                        icon: Icons.dark-mode;
+                        title: @tr("Theme");
+                        description: @tr("Follow the system or pick light or dark");
+                    }
+                    Segmented {
+                        options: [@tr("System"), @tr("Light"), @tr("Dark")];
+                        current: Theme.mode;
+                        changed(index) => {
+                            Theme.mode = index;
+                            App.appearance-changed();
+                        }
+                    }
+                    ListRow {
+                        icon: Icons.palette;
+                        title: @tr("Accent color");
+                        description: @tr("Tints buttons, selection and surfaces");
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.space-sm;
+                        alignment: start;
+                        for accent[index] in Theme.accents: Swatch {
+                            swatch: accent;
+                            selected: index == Theme.accent-index;
+                            clicked => {
+                                Theme.accent-index = index;
+                                App.appearance-changed();
+                            }
+                        }
+                    }
+                    ListRow {
+                        icon: Icons.rounded-corner;
+                        title: @tr("Corner style");
+                        description: @tr("Rounded corners or sharp edges everywhere");
+                    }
+                    Segmented {
+                        options: [@tr("Rounded"), @tr("Square")];
+                        current: Theme.square ? 1 : 0;
+                        changed(index) => {
+                            Theme.square = index == 1;
+                            App.appearance-changed();
+                        }
+                    }
+                }
+
+                if root.category == 2: VerticalLayout {
+                    spacing: Theme.space-xs;
+                    SectionHeader { text: @tr("About"); }
+                    ListRow {
+                        icon: Icons.info;
+                        title: @tr("Version");
+                        description: App.version;
+                    }
+                    ListRow {
+                        icon: Icons.gavel;
+                        title: @tr("License");
+                    }
+                    Note {
+                        text: @tr("© 2026 Lava Connect contributors · GPL-3.0-or-later · No warranty. See the bundled LICENSE or gnu.org/licenses/gpl-3.0.html");
+                    }
+                    ListRow {
+                        icon: Icons.link;
+                        title: @tr("Privacy");
+                    }
+                    Note { text: @tr("Local network only · TLS 1.3 over QUIC · no account, no cloud"); }
+                }
+            }
+        }
+    }
+}

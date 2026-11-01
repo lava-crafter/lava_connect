@@ -19,7 +19,11 @@ class ConnectViewModel(
     fun testRust() {
         runCatching {
             repository.greeting()
-        }.onSuccess { _nativeGreeting.value = it }.onFailure { showError("Native core unavailable: build with scripts/build-android.sh") }
+        }.onSuccess { _nativeGreeting.value = it }.onFailure {
+            showError(
+                getApplication<Application>().getString(R.string.error_native_missing),
+            )
+        }
     }
 
     init {
@@ -126,5 +130,9 @@ class ConnectViewModel(
 
     fun showError(message: String) {
         _state.value = _state.value.copy(error = message)
+    }
+
+    fun clearError() {
+        _state.value = _state.value.copy(error = null)
     }
 }

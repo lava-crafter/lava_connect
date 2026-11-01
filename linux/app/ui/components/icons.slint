@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Material Symbols (Apache-2.0), see ui/icons/README.md.
+export global Icons {
+    out property <image> add: @image-url("../icons/add.svg");
+    out property <image> check: @image-url("../icons/check.svg");
+    out property <image> close: @image-url("../icons/close.svg");
+    out property <image> computer: @image-url("../icons/computer.svg");
+    out property <image> content-copy: @image-url("../icons/content_copy.svg");
+    out property <image> content-paste: @image-url("../icons/content_paste.svg");
+    out property <image> dark-mode: @image-url("../icons/dark_mode.svg");
+    out property <image> delete: @image-url("../icons/delete.svg");
+    out property <image> devices: @image-url("../icons/devices.svg");
+    out property <image> gavel: @image-url("../icons/gavel.svg");
+    out property <image> group-add: @image-url("../icons/group_add.svg");
+    out property <image> image: @image-url("../icons/image.svg");
+    out property <image> info: @image-url("../icons/info.svg");
+    out property <image> link: @image-url("../icons/link.svg");
+    out property <image> link-off: @image-url("../icons/link_off.svg");
+    out property <image> menu: @image-url("../icons/menu.svg");
+    out property <image> menu-open: @image-url("../icons/menu_open.svg");
+    out property <image> more-vert: @image-url("../icons/more_vert.svg");
+    out property <image> palette: @image-url("../icons/palette.svg");
+    out property <image> pause: @image-url("../icons/pause.svg");
+    out property <image> phone-android: @image-url("../icons/phone_android.svg");
+    out property <image> play-arrow: @image-url("../icons/play_arrow.svg");
+    out property <image> rounded-corner: @image-url("../icons/rounded_corner.svg");
+    out property <image> search: @image-url("../icons/search.svg");
+    out property <image> send: @image-url("../icons/send.svg");
+    out property <image> settings: @image-url("../icons/settings.svg");
+    out property <image> sync: @image-url("../icons/sync.svg");
+    out property <image> text-fields: @image-url("../icons/text_fields.svg");
+    out property <image> visibility-off: @image-url("../icons/visibility_off.svg");
+    out property <image> wifi-find: @image-url("../icons/wifi_find.svg");
+    out property <image> workspaces: @image-url("../icons/workspaces.svg");
+
+    public pure function platform(platform: string) -> image {
+        if (platform == "android") {
+            return phone-android;
+        }
+        if (platform == "linux" || platform == "windows" || platform == "macos") {
+            return computer;
+        }
+        return devices;
+    }
+}

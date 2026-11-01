@@ -47,6 +47,7 @@ data class ClipboardGroup(
 data class ConnectState(
     val running: Boolean = false,
     val localId: String = "",
+    val localName: String = "",
     val devices: List<DeviceInfo> = emptyList(),
     val error: String? = null,
     val imageAvailable: Boolean = false,
@@ -214,6 +215,7 @@ class ConnectService : Service() {
                         _state.value.copy(
                             running = snapshot.optBoolean("running"),
                             localId = snapshot.optString("device_id"),
+                            localName = snapshot.optString("device_name"),
                             devices = devices,
                             groups = groups,
                             activeGroupId = activeGroupId,

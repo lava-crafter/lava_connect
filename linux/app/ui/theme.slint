@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Design tokens shared with Android (android/.../ui/design). Colors are computed in
+// src/theme.rs so both platforms mix the accent identically; see docs/ui-design.md.
+import { Palette } from "std-widgets.slint";
+
+export struct LavaColors {
+    primary: color, on-primary: color, primary-container: color, on-primary-container: color,
+    secondary: color, on-secondary: color, secondary-container: color, on-secondary-container: color,
+    tertiary: color, on-tertiary: color, tertiary-container: color, on-tertiary-container: color,
+    surface: color, on-surface: color, surface-variant: color, on-surface-variant: color,
+    surface-dim: color, surface-bright: color,
+    surface-container-lowest: color, surface-container-low: color, surface-container: color,
+    surface-container-high: color, surface-container-highest: color,
+    outline: color, outline-variant: color,
+    inverse-surface: color, inverse-on-surface: color, inverse-primary: color,
+    error: color, on-error: color, error-container: color, on-error-container: color,
+}
+
+export global Theme {
+    in-out property <LavaColors> light;
+    in-out property <LavaColors> dark;
+    // 0 = follow system, 1 = light, 2 = dark.
+    in-out property <int> mode;
+    // Corner profile: false = Expressive (rounded), true = Square, as in lava_note.
+    in-out property <bool> square;
+    in-out property <int> accent-index;
+    in-out property <[color]> accents;
+
+    out property <bool> is-dark: mode == 0 ? Palette.color-scheme == ColorScheme.dark : mode == 2;
+    out property <LavaColors> c: is-dark ? dark : light;
+
+    // Shapes (LavaShapes.kt).
+    out property <length> radius-xs: square ? 0px : 8px;
+    out property <length> radius-sm: square ? 0px : 12px;
+    out property <length> radius-md: square ? 0px : 16px;
+    out property <length> radius-lg: square ? 0px : 24px;
+    out property <length> radius-xl: square ? 0px : 32px;
+
+    // Spacing (LavaSpacing.kt).
+    out property <length> space-xs: 4px;
+    out property <length> space-sm: 8px;
+    out property <length> space-md: 12px;
+    out property <length> space-lg: 16px;
+    out property <length> space-xl: 24px;
+
+    // Desktop density: pointer targets are smaller than Android's 48dp touch targets.
+    out property <length> control-height: 36px;
+    out property <length> row-height: 56px;
+
+    // Material 3 type scale.
+    out property <length> display-small: 36px;
+    out property <length> headline-small: 24px;
+    out property <length> title-large: 22px;
+    out property <length> title-medium: 16px;
+    out property <length> title-small: 14px;
+    out property <length> body-large: 16px;
+    out property <length> body-medium: 14px;
+    out property <length> body-small: 12px;
+    out property <length> label-large: 14px;
+    out property <length> label-medium: 12px;
+    out property <length> label-small: 11px;
+
+    // Motion and state layers (LavaMotion.kt, LavaInteraction.kt).
+    out property <duration> micro: 120ms;
+    out property <duration> standard: 200ms;
+    out property <duration> expressive: 320ms;
+    out property <float> hover-alpha: 0.08;
+    out property <float> pressed-alpha: 0.12;
+    out property <float> selected-alpha: 0.16;
+    out property <float> focused-border-alpha: 0.72;
+}

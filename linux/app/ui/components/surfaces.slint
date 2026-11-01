@@ -1,0 +1,220 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { Theme } from "../theme.slint";
+import { Icons } from "icons.slint";
+import { Interactive, Button, ButtonKind, IconButton, HDivider } from "controls.slint";
+
+/// LavaCard: surface-container-low, medium shape, no shadow; selected uses primary-container
+/// with a 1px primary border at 72%.
+export component Card inherits Interactive {
+    in property <bool> selected;
+    in property <length> inset: Theme.space-lg;
+
+    radius: Theme.radius-md;
+    background: root.selected ? Theme.c.primary-container : Theme.c.surface-container-low;
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.c.primary.transparentize(1 - Theme.focused-border-alpha);
+    accessible-role: none;
+    accessible-item-selected: root.selected;
+
+    VerticalLayout {
+        padding: root.inset;
+        spacing: Theme.space-sm;
+        @children
+    }
+}
+
+/// Static card for content that is not itself clickable.
+export component Panel inherits Rectangle {
+    in property <length> inset: Theme.space-lg;
+    border-radius: Theme.radius-md;
+    background: Theme.c.surface-container-low;
+
+    VerticalLayout {
+        padding: root.inset;
+        spacing: Theme.space-sm;
+        @children
+    }
+}
+
+/// Settings group header (primary, bold labelLarge) as in lava_note's SettingsGroup.
+export component SectionHeader inherits Text {
+    color: Theme.c.primary;
+    font-size: Theme.label-large;
+    font-weight: 700;
+    accessible-role: text;
+}
+
+export component PaneTitle inherits HorizontalLayout {
+    in property <string> text;
+    padding-left: Theme.space-xl;
+    padding-right: Theme.space-lg;
+    padding-top: Theme.space-lg;
+    padding-bottom: Theme.space-sm;
+    spacing: Theme.space-sm;
+    Text {
+        text: root.text;
+        color: Theme.c.on-surface;
+        font-size: Theme.title-large;
+        font-weight: 600;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+    @children
+}
+
+/// Icon + title + description row with a trailing slot (ListItem in Compose).
+export component ListRow inherits HorizontalLayout {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> description;
+    // Slint measures wrapped text inside a row before its final width is known, so the
+    // description stays on one elided line; put longer explanations in a Note below the row.
+    padding-top: Theme.space-sm;
+    padding-bottom: Theme.space-sm;
+    spacing: Theme.space-lg;
+    min-height: 48px;
+    if root.icon.width > 0: Image {
+        source: root.icon;
+        colorize: Theme.c.on-surface-variant;
+        width: 20px;
+        height: 20px;
+        y: (parent.height - self.height) / 2;
+    }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        Text {
+            text: root.title;
+            color: Theme.c.on-surface;
+            font-size: Theme.body-large;
+            overflow: elide;
+        }
+        if root.description != "": Text {
+            text: root.description;
+            color: Theme.c.on-surface-variant;
+            font-size: Theme.body-medium;
+            overflow: elide;
+        }
+    }
+    @children
+}
+
+/// Secondary explanatory paragraph; must sit directly in a VerticalLayout to wrap correctly.
+export component Note inherits Text {
+    color: Theme.c.on-surface-variant;
+    font-size: Theme.body-small;
+    wrap: word-wrap;
+}
+
+/// Monospaced identifier with a copy button.
+export component CopyableId inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> copy-label;
+    callback copy(string);
+    spacing: Theme.space-sm;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        Text { text: root.label; color: Theme.c.on-surface-variant; font-size: Theme.label-medium; }
+        Text {
+            text: root.value;
+            color: Theme.c.on-surface;
+            font-size: Theme.body-small;
+            font-family: "monospace";
+            wrap: char-wrap;
+        }
+    }
+    IconButton {
+        icon: Icons.content-copy;
+        label: root.copy-label;
+        y: (parent.height - self.height) / 2;
+        clicked => { root.copy(root.value); }
+    }
+}
+
+export component EmptyState inherits VerticalLayout {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> description;
+    alignment: center;
+    spacing: Theme.space-md;
+    padding: Theme.space-xl;
+    HorizontalLayout {
+        alignment: center;
+        Image { source: root.icon; colorize: Theme.c.primary; width: 32px; height: 32px; }
+    }
+    Text {
+        text: root.title;
+        color: Theme.c.on-surface;
+        font-size: Theme.title-large;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    if root.description != "": Text {
+        text: root.description;
+        color: Theme.c.on-surface-variant;
+        font-size: Theme.body-medium;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    @children
+}
+
+/// Modal dialog (LavaDialog): extra-large shape, filled confirm, outlined dismiss, error colors
+/// for destructive actions. Esc/Enter are handled by the window's key handler.
+export component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <string> confirm-label;
+    in property <string> dismiss-label;
+    in property <bool> confirm-enabled: true;
+    in property <bool> destructive;
+    callback confirm();
+    callback dismiss();
+
+    background: #00000052;
+    TouchArea {
+        // Block clicks to the page underneath; clicking the scrim dismisses like Compose.
+        clicked => { root.dismiss(); }
+    }
+    Rectangle {
+        width: min(root.width - 48px, 480px);
+        height: card.preferred-height;
+        border-radius: Theme.radius-xl;
+        background: Theme.c.surface-container-high;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #0000003d;
+        TouchArea { }
+        card := VerticalLayout {
+            padding: Theme.space-xl;
+            spacing: Theme.space-lg;
+            Text {
+                text: root.title;
+                color: Theme.c.on-surface;
+                font-size: Theme.headline-small;
+                wrap: word-wrap;
+            }
+            VerticalLayout {
+                spacing: Theme.space-md;
+                @children
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: Theme.space-sm;
+                Button {
+                    text: root.dismiss-label;
+                    kind: ButtonKind.outlined;
+                    clicked => { root.dismiss(); }
+                }
+                Button {
+                    text: root.confirm-label;
+                    kind: root.destructive ? ButtonKind.danger : ButtonKind.filled;
+                    enabled: root.confirm-enabled;
+                    clicked => { root.confirm(); }
+                }
+            }
+        }
+    }
+}
+
+export { HDivider }

@@ -1,0 +1,298 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Chinese (Simplified) catalog for the Slint UI. Source strings are English;
+# terminology follows the glossary in docs/ui-design.md and Android values-zh/strings.xml.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "About"
+msgstr "关于"
+
+msgid "Accent color"
+msgstr "强调色"
+
+msgid "Active"
+msgstr "当前"
+
+msgid "Appearance"
+msgstr "外观"
+
+msgid "Available"
+msgstr "可配对"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel pairing"
+msgstr "取消配对"
+
+msgid "Clipboard groups"
+msgstr "剪贴板组"
+
+msgid "Clipboard sync"
+msgstr "剪贴板同步"
+
+msgid "Clipboard sync paused"
+msgstr "剪贴板同步已暂停"
+
+msgid "Clipboard sync resumed"
+msgstr "剪贴板同步已恢复"
+
+msgid "Closing the window"
+msgstr "关闭窗口"
+
+msgid "Compare code"
+msgstr "核对代码"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "Confirm pairing"
+msgstr "确认配对"
+
+msgid "Connected"
+msgstr "已连接"
+
+msgid "Connecting"
+msgstr "连接中"
+
+msgid "Connection"
+msgstr "连接"
+
+msgid "Copied"
+msgstr "已复制"
+
+msgid "Copies are sent to connected devices automatically"
+msgstr "复制的内容会自动发送到已连接的设备"
+
+msgid "Copy device ID"
+msgstr "复制设备 ID"
+
+msgid "Copy group code"
+msgstr "复制组码"
+
+msgid "Corner style"
+msgstr "圆角风格"
+
+msgid "Create group"
+msgstr "创建组"
+
+msgid "Dark"
+msgstr "深色"
+
+msgid "Delete group"
+msgstr "删除组"
+
+msgid "Delete group…"
+msgstr "删除组…"
+
+msgid "Delete {}?"
+msgstr "删除 {}？"
+
+msgid "Device ID / fingerprint"
+msgstr "设备 ID / 指纹"
+
+msgid "Devices"
+msgstr "设备"
+
+msgid "Devices on the same network appear here automatically."
+msgstr "同一局域网中的设备会自动出现在这里。"
+
+msgid "Filter devices"
+msgstr "筛选设备"
+
+msgid "Filter devices (Ctrl+F)"
+msgstr "筛选设备（Ctrl+F）"
+
+msgid "Follow the system or pick light or dark"
+msgstr "跟随系统，或固定为浅色、深色"
+
+msgid "Group code"
+msgstr "组码"
+
+msgid "Group codes identify groups. They are not passwords and do not pair or authorize devices."
+msgstr "组码只用来标识组，不是密码，也不能代替配对授权。"
+
+msgid "Group codes identify groups. They are not passwords and do not pair or authorize devices. Both devices must select the same group and include each other before they sync; nothing is relayed through other devices."
+msgstr "组码只用来标识组，不是密码，也不能代替配对授权。两端选中同一个组并互相勾选为成员后才会同步，内容不经其他设备中继。"
+
+msgid "Group name"
+msgstr "组名称"
+
+msgid "Image clipboard"
+msgstr "图片剪贴板"
+
+msgid "Join group"
+msgstr "加入组"
+
+msgid "Lava Connect keeps syncing from the system tray. Use Quit in the tray menu or Ctrl+Q to stop it."
+msgstr "Lava Connect 会在系统托盘中继续同步。要停止，请使用托盘菜单中的“退出”或按 Ctrl+Q。"
+
+msgid "License"
+msgstr "许可证"
+
+msgid "Light"
+msgstr "浅色"
+
+msgid "Local network only · TLS 1.3 over QUIC · no account, no cloud"
+msgstr "仅局域网 · TLS 1.3 / QUIC · 无账户、无云端"
+
+msgid "Looking for devices on the local network…"
+msgstr "正在发现同一局域网中的设备…"
+
+msgid "Members"
+msgstr "成员"
+
+msgid "Name on this device"
+msgstr "在本机显示的名称"
+
+msgid "No connected devices"
+msgstr "没有已连接的设备"
+
+msgid "No devices yet"
+msgstr "还没有设备"
+
+msgid "No matching devices"
+msgstr "没有匹配的设备"
+
+msgid "Offline"
+msgstr "离线"
+
+msgid "Only confirm if both devices show the same code and this device ID."
+msgstr "只有两端显示相同的代码和这个设备 ID 时才确认。"
+
+msgid "Only paired devices can be members. Pair a device on the Devices page to add it here."
+msgstr "只有已配对的设备才能成为成员。在“设备”页配对后即可在这里添加。"
+
+msgid "Pair"
+msgstr "配对"
+
+msgid "Pair this device to sync clipboards with it."
+msgstr "配对后才能与这台设备同步剪贴板。"
+
+msgid "Pairing"
+msgstr "配对中"
+
+msgid "Pairing code"
+msgstr "配对代码"
+
+msgid "Pause sync"
+msgstr "暂停同步"
+
+msgid "Paused"
+msgstr "已暂停"
+
+msgid "Paused. Copies are neither sent nor applied."
+msgstr "已暂停，不会发送也不会写入剪贴板。"
+
+msgid "Privacy"
+msgstr "隐私"
+
+msgid "Received a remote clipboard"
+msgstr "已接收远端剪贴板"
+
+msgid "Resume clipboard sync first"
+msgstr "请先恢复剪贴板同步"
+
+msgid "Resume sync"
+msgstr "恢复同步"
+
+msgid "Rounded"
+msgstr "圆角"
+
+msgid "Rounded corners or sharp edges everywhere"
+msgstr "全局使用圆角或直角"
+
+msgid "Select a device to see its details"
+msgstr "选择一台设备查看详情"
+
+msgid "Send"
+msgstr "发送"
+
+msgid "Send and receive copied images"
+msgstr "发送和接收复制的图片"
+
+msgid "Send and receive copied text"
+msgstr "发送和接收复制的文字"
+
+msgid "Send clipboard"
+msgstr "发送剪贴板"
+
+msgid "Send text"
+msgstr "发送文字"
+
+msgid "Sent"
+msgstr "已发送"
+
+msgid "Settings"
+msgstr "设置"
+
+msgid "Square"
+msgstr "直角"
+
+msgid "Sync in active group"
+msgstr "在当前组中同步"
+
+msgid "Syncing in this group stops and this device returns to the Default group."
+msgstr "此组内的同步会停止，本机回到默认组。"
+
+msgid "System"
+msgstr "跟随系统"
+
+msgid "Text clipboard"
+msgstr "文字剪贴板"
+
+msgid "Text to send"
+msgstr "要发送的文字"
+
+msgid "The device has selected this group too"
+msgstr "对方也已选中此组"
+
+msgid "The device must be paired again before it can sync."
+msgstr "撤销后需要重新配对才能同步。"
+
+msgid "The device must join and select this group"
+msgstr "对方需要加入并选中此组"
+
+msgid "Theme"
+msgstr "主题"
+
+msgid "This device · ID / fingerprint"
+msgstr "本机 · ID / 指纹"
+
+msgid "Tints buttons, selection and surfaces"
+msgstr "用于按钮、选中状态和界面底色"
+
+msgid "Trusted"
+msgstr "已信任"
+
+msgid "Unpair"
+msgstr "撤销信任"
+
+msgid "Unpair {}?"
+msgstr "撤销对 {} 的信任？"
+
+msgid "Unpair…"
+msgstr "撤销信任…"
+
+msgid "Use ↑ and ↓ to move through the list, Enter to pair."
+msgstr "用 ↑ 和 ↓ 在列表中移动，按 Enter 配对。"
+
+msgid "Version"
+msgstr "版本"
+
+msgid "Wayland sessions need wl-clipboard. Android receives in the background and sends while open, or from any app once background reading is set up."
+msgstr "Wayland 会话需要安装 wl-clipboard。Android 端可在后台接收；打开应用时发送，设置后台读取后在任意应用中复制都会发送。"
+
+msgid "© 2026 Lava Connect contributors · GPL-3.0-or-later · No warranty. See the bundled LICENSE or gnu.org/licenses/gpl-3.0.html"
+msgstr "© 2026 Lava Connect contributors · GPL-3.0-or-later · 无担保。许可证见随附 LICENSE 或 gnu.org/licenses/gpl-3.0.html"
+
+msgid "{n} member"
+msgid_plural "{n} members"
+msgstr[0] "{n} 名成员"
+
+msgid "Syncing with {n} device"
+msgid_plural "Syncing with {n} devices"
+msgstr[0] "正在与 {n} 台设备同步"

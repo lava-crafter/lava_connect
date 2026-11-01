@@ -1,1 +1,140 @@
-<resources><string name="app_name">Lava Connect</string></resources>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Terminology follows the glossary in docs/ui-design.md; keep the Linux .po file in sync. -->
+<resources>
+    <string name="app_name" translatable="false">Lava Connect</string>
+
+    <string name="common_confirm">Confirm</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_done">Done</string>
+    <string name="common_more_actions">More actions</string>
+    <string name="common_expanded">Expanded</string>
+    <string name="common_collapsed">Collapsed</string>
+    <string name="lava_menu_submenu_expanded">Expanded</string>
+    <string name="lava_menu_submenu_collapsed">Collapsed</string>
+
+    <string name="nav_devices">Devices</string>
+    <string name="nav_groups">Groups</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="local_device">This device</string>
+    <string name="local_running">Syncing</string>
+    <string name="local_stopped">Stopped</string>
+    <string name="local_start">Start</string>
+    <string name="local_stop">Stop</string>
+    <string name="local_note">Received text and images are written in the background. Copies are sent while this app is open, or from any app once background reading is set up.</string>
+
+    <string name="devices_empty_title">No devices yet</string>
+    <string name="devices_empty_running">Devices on the same network appear here automatically.</string>
+    <string name="devices_empty_stopped">Start syncing to discover devices on your network.</string>
+    <string name="devices_select_hint">Select a device to see its details</string>
+
+    <string name="device_state_available">Available</string>
+    <string name="device_state_connecting">Connecting</string>
+    <string name="device_state_pairing">Pairing</string>
+    <string name="device_state_connected">Connected</string>
+    <string name="device_state_offline">Offline</string>
+    <string name="device_trusted">Trusted</string>
+    <string name="device_pair">Pair</string>
+    <string name="device_confirm_pairing">Compare code</string>
+    <string name="device_unpair">Unpair</string>
+    <string name="device_unpair_title">Unpair %1$s?</string>
+    <string name="device_unpair_message">The device must be paired again before it can sync.</string>
+    <string name="device_copy_id">Copy device ID</string>
+    <string name="device_fingerprint">Device ID / fingerprint</string>
+    <string name="device_sync_in_group">Sync in active group</string>
+    <string name="device_group_ready">The device has selected this group too</string>
+    <string name="device_group_not_ready">The device must join and select this group</string>
+    <string name="device_text">Text clipboard</string>
+    <string name="device_text_description">Send and receive copied text</string>
+    <string name="device_image">Image clipboard</string>
+    <string name="device_image_description">Send and receive copied images</string>
+    <string name="device_not_trusted">Pair this device to sync clipboards with it.</string>
+    <string name="device_back">Back to devices</string>
+
+    <string name="pairing_title">Confirm pairing</string>
+    <string name="pairing_message">Only confirm if both devices show the same code and this device ID.</string>
+    <string name="pairing_code">Pairing code</string>
+
+    <string name="received_image_title">Image received</string>
+    <string name="received_image_description">Share it to save or open it in another app.</string>
+    <string name="received_image_share">Share</string>
+    <string name="received_image_chooser">Share received image</string>
+
+    <string name="send_menu">Send</string>
+    <string name="send_clipboard">Send clipboard</string>
+    <string name="send_image">Send image</string>
+    <string name="send_text">Send text</string>
+    <string name="send_text_label">Text to send</string>
+    <string name="send_action">Send</string>
+
+    <string name="groups_default">Default</string>
+    <string name="groups_active">Active</string>
+    <string name="groups_create">Create group</string>
+    <string name="groups_join">Join group</string>
+    <string name="groups_name">Group name</string>
+    <string name="groups_code">Group code</string>
+    <string name="groups_join_name">Name on this device</string>
+    <string name="groups_code_note">Group codes identify groups. They are not passwords and do not pair or authorize devices.</string>
+    <string name="groups_copy_code">Copy group code</string>
+    <string name="groups_delete">Delete group</string>
+    <string name="groups_delete_title">Delete %1$s?</string>
+    <string name="groups_delete_message">Syncing in this group stops and this device returns to the Default group.</string>
+    <string name="groups_members">Members</string>
+    <string name="groups_members_empty">Pair a device to add it to this group.</string>
+    <string name="groups_stopped">Start syncing to manage clipboard groups.</string>
+    <string name="groups_menu">Group actions</string>
+
+    <string name="settings_connection">Connection</string>
+    <string name="settings_sync">Clipboard sync</string>
+    <string name="settings_sync_on">Running in the background</string>
+    <string name="settings_sync_off">Stopped</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_description">Follow the system or pick light or dark</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_accent">Accent color</string>
+    <string name="settings_accent_description">Tints buttons, selection and surfaces</string>
+    <string name="settings_color_blue">Blue</string>
+    <string name="settings_color_light_blue">Light blue</string>
+    <string name="settings_color_indigo">Indigo</string>
+    <string name="settings_color_cyan">Cyan</string>
+    <string name="settings_color_deep_blue">Deep blue</string>
+    <string name="settings_shape">Corner style</string>
+    <string name="settings_shape_description">Rounded corners or sharp edges everywhere</string>
+    <string name="settings_shape_expressive">Rounded</string>
+    <string name="settings_shape_square">Square</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_license">License</string>
+    <string name="settings_license_description">GPL-3.0-or-later · No warranty · © 2026 Lava Connect contributors</string>
+    <string name="settings_test_native">Test native core</string>
+    <string name="settings_test_native_description">Debug builds only</string>
+
+    <string name="background_title">Background reading</string>
+    <string name="background_intro">When another app copies, Lava Connect briefly opens an invisible window to read and send the clipboard. Shizuku is only needed once to grant the permissions.</string>
+    <string name="background_auto_send">Auto-send in background</string>
+    <string name="background_auto_send_description">Send copies made in any app</string>
+    <string name="background_not_set_up">Grant the permissions below first</string>
+    <string name="background_shizuku">Shizuku</string>
+    <string name="background_shizuku_unavailable">Not running</string>
+    <string name="background_shizuku_needs_permission">Permission needed</string>
+    <string name="background_shizuku_ready">Ready</string>
+    <string name="background_grant">Grant with Shizuku</string>
+    <string name="background_granting">Granting…</string>
+    <string name="background_logs">Log access</string>
+    <string name="background_logs_granted">Granted</string>
+    <string name="background_logs_restart">Granted, restart required</string>
+    <string name="background_missing">Missing</string>
+    <string name="background_restart">Restart app to apply</string>
+    <string name="background_overlay">Start from background (overlay)</string>
+    <string name="background_manual">Grant without Shizuku</string>
+    <string name="background_manual_description">Run once from a computer with adb</string>
+    <string name="background_privacy">Log access lets an app read all system logs. Lava Connect only follows ClipboardService errors and never stores or sends log lines. Clips marked sensitive (passwords) are not sent automatically. Android 13+ may ask to allow log access when this screen opens.</string>
+
+    <string name="error_local_network">Local network permission is required for discovery and connections</string>
+    <string name="error_no_share_target">No app can receive the image</string>
+    <string name="error_native_missing">Native core unavailable: build with scripts/build-android.sh</string>
+</resources>

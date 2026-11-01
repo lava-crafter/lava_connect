@@ -1,0 +1,282 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Master/detail device page: compact list on the left, details of the selection on the right.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { App, DeviceRow, DialogKind } from "../app.slint";
+import { Icons } from "../components/icons.slint";
+import { Interactive, Button, ButtonKind, Switch, Chip, VDivider, HDivider } from "../components/controls.slint";
+import { Panel, SectionHeader, ListRow, CopyableId, EmptyState } from "../components/surfaces.slint";
+
+component DeviceListRow inherits Interactive {
+    in property <DeviceRow> device;
+    in property <bool> selected;
+    property <bool> pairing: device.state == "pairing" && device.code != "";
+
+    height: Theme.row-height;
+    radius: Theme.radius-lg;
+    background: selected ? Theme.c.secondary-container : transparent;
+    accessible-label: device.name;
+    accessible-item-selected: selected;
+    clicked => { App.select-device(device.id); }
+    right-clicked(point) => {
+        App.select-device(device.id);
+        menu.show(point);
+    }
+
+    menu := ContextMenuArea {
+        Menu {
+            if !root.device.trusted && root.device.state == "available": MenuItem {
+                title: @tr("Pair");
+                activated => { App.device-action("pair", root.device.id, ""); }
+            }
+            if root.pairing: MenuItem {
+                title: @tr("Compare code");
+                activated => {
+                    App.dialog-device = root.device;
+                    App.dialog = DialogKind.confirm-pairing;
+                }
+            }
+            if root.pairing: MenuItem {
+                title: @tr("Cancel pairing");
+                activated => { App.device-action("cancel", root.device.id, ""); }
+            }
+            MenuItem {
+                title: @tr("Copy device ID");
+                activated => { App.copy(root.device.id); }
+            }
+            if root.device.trusted: MenuSeparator { }
+            if root.device.trusted: MenuItem {
+                title: @tr("Unpair…");
+                activated => {
+                    App.dialog-device = root.device;
+                    App.dialog = DialogKind.unpair;
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-lg;
+        padding-right: Theme.space-md;
+        spacing: Theme.space-md;
+        Image {
+            source: Icons.platform(root.device.platform);
+            colorize: root.selected ? Theme.c.on-secondary-container : Theme.c.on-surface-variant;
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.device.name;
+                color: root.selected ? Theme.c.on-secondary-container : Theme.c.on-surface;
+                font-size: Theme.title-small;
+                font-weight: 600;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: Theme.space-xs;
+                alignment: start;
+                Chip { text: App.state-label(root.device.state); active: root.device.state == "connected"; }
+                if root.device.trusted: Chip { text: @tr("Trusted"); }
+            }
+        }
+        if root.pairing: Text {
+            text: root.device.code;
+            color: Theme.c.primary;
+            font-size: Theme.title-medium;
+            font-weight: 600;
+            font-family: "monospace";
+            vertical-alignment: center;
+        }
+        if !root.device.trusted && root.device.state == "available": Button {
+            text: @tr("Pair");
+            kind: ButtonKind.tonal;
+            height: 32px;
+            y: (parent.height - self.height) / 2;
+            clicked => { App.device-action("pair", root.device.id, ""); }
+        }
+    }
+}
+
+component DeviceDetail inherits ScrollView {
+    in property <DeviceRow> device;
+    property <bool> pairing: device.state == "pairing" && device.code != "";
+
+    VerticalLayout {
+        padding: Theme.space-xl;
+        spacing: Theme.space-lg;
+        alignment: start;
+
+        HorizontalLayout {
+            spacing: Theme.space-md;
+            Image {
+                source: Icons.platform(root.device.platform);
+                colorize: Theme.c.primary;
+                width: 28px;
+                height: 28px;
+                y: (parent.height - self.height) / 2;
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: Theme.space-xs;
+                Text {
+                    text: root.device.name;
+                    color: Theme.c.on-surface;
+                    font-size: Theme.title-large;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-xs;
+                    alignment: start;
+                    Chip { text: App.state-label(root.device.state); active: root.device.state == "connected"; }
+                    Chip { text: root.device.platform; }
+                }
+            }
+        }
+
+        CopyableId {
+            label: @tr("Device ID / fingerprint");
+            value: root.device.id;
+            copy-label: @tr("Copy device ID");
+            copy(value) => { App.copy(value); }
+        }
+
+        if root.pairing: Panel {
+            Text { text: @tr("Pairing code"); color: Theme.c.on-surface-variant; font-size: Theme.label-large; }
+            Text {
+                text: root.device.code;
+                color: Theme.c.primary;
+                font-size: Theme.display-small;
+                font-family: "monospace";
+            }
+            Text {
+                text: @tr("Only confirm if both devices show the same code and this device ID.");
+                color: Theme.c.on-surface;
+                font-size: Theme.body-medium;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: Theme.space-sm;
+                alignment: start;
+                Button {
+                    text: @tr("Confirm pairing");
+                    clicked => {
+                        App.dialog-device = root.device;
+                        App.dialog = DialogKind.confirm-pairing;
+                    }
+                }
+                Button {
+                    text: @tr("Cancel");
+                    kind: ButtonKind.outlined;
+                    clicked => { App.device-action("cancel", root.device.id, ""); }
+                }
+            }
+        }
+
+        if !root.pairing && !root.device.trusted: Panel {
+            Text {
+                text: @tr("Pair this device to sync clipboards with it.");
+                color: Theme.c.on-surface;
+                font-size: Theme.body-medium;
+                wrap: word-wrap;
+            }
+            if root.device.state == "available": HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: @tr("Pair");
+                    clicked => { App.device-action("pair", root.device.id, ""); }
+                }
+            }
+        }
+
+        if root.device.trusted: VerticalLayout {
+            spacing: Theme.space-xs;
+            SectionHeader { text: App.active-group-name; }
+            ListRow {
+                icon: Icons.workspaces;
+                title: @tr("Sync in active group");
+                description: root.device.group-compatible
+                    ? @tr("The device has selected this group too")
+                    : @tr("The device must join and select this group");
+                Switch {
+                    checked: root.device.in-group;
+                    y: (parent.height - self.height) / 2;
+                    toggled(on) => { App.group-member(App.active-group-id, root.device.id, on); }
+                }
+            }
+            ListRow {
+                icon: Icons.text-fields;
+                title: @tr("Text clipboard");
+                description: @tr("Send and receive copied text");
+                Switch {
+                    checked: root.device.text-enabled;
+                    y: (parent.height - self.height) / 2;
+                    toggled(on) => { App.capability(root.device.id, 1, on); }
+                }
+            }
+            ListRow {
+                icon: Icons.image;
+                title: @tr("Image clipboard");
+                description: @tr("Send and receive copied images");
+                Switch {
+                    checked: root.device.image-enabled;
+                    y: (parent.height - self.height) / 2;
+                    toggled(on) => { App.capability(root.device.id, 2, on); }
+                }
+            }
+            HDivider { }
+            HorizontalLayout {
+                padding-top: Theme.space-md;
+                alignment: start;
+                Button {
+                    text: @tr("Unpair…");
+                    icon: Icons.link-off;
+                    kind: ButtonKind.danger-outlined;
+                    clicked => {
+                        App.dialog-device = root.device;
+                        App.dialog = DialogKind.unpair;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component DevicesPage inherits HorizontalLayout {
+    in property <length> list-width: 340px;
+
+    VerticalLayout {
+        width: root.list-width;
+        if App.devices.length == 0: EmptyState {
+            icon: Icons.wifi-find;
+            title: App.filter-text == "" ? @tr("No devices yet") : @tr("No matching devices");
+            description: App.filter-text == "" ? @tr("Devices on the same network appear here automatically.") : "";
+        }
+        if App.devices.length > 0: ScrollView {
+            VerticalLayout {
+                padding: Theme.space-md;
+                spacing: Theme.space-xs;
+                alignment: start;
+                for device in App.devices: DeviceListRow {
+                    device: device;
+                    selected: device.id == App.selected-device-id;
+                }
+            }
+        }
+    }
+    VDivider { }
+    Rectangle {
+        horizontal-stretch: 1;
+        if App.has-selected-device: DeviceDetail { device: App.selected-device; }
+        if !App.has-selected-device: EmptyState {
+            icon: Icons.devices;
+            title: @tr("Select a device to see its details");
+            description: @tr("Use ↑ and ↓ to move through the list, Enter to pair.");
+        }
+    }
+}

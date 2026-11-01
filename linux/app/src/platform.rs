@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::t;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     io::{Read, Write},
@@ -31,7 +32,10 @@ fn select_type(types: &str) -> Result<(&str, &str)> {
     {
         return Ok(("text/plain", offered));
     }
-    bail!("剪贴板不是文字或 PNG 图片")
+    bail!(t(
+        "Clipboard is not text or a PNG image",
+        "剪贴板不是文字或 PNG 图片"
+    ))
 }
 
 pub fn write_clipboard(mime: &str, bytes: &[u8]) -> Result<()> {
@@ -57,7 +61,15 @@ fn run(program: &str, args: &[&str], input: Option<&[u8]>, limit: usize) -> Resu
         })
         .stderr(Stdio::null())
         .spawn()
-        .with_context(|| format!("无法运行 {program}；请安装 wl-clipboard 并使用 Wayland 会话"))?;
+        .with_context(|| {
+            format!(
+                "{program}: {}",
+                t(
+                    "cannot run; install wl-clipboard and use a Wayland session",
+                    "无法运行；请安装 wl-clipboard 并使用 Wayland 会话"
+                )
+            )
+        })?;
     let reader = child.stdout.take().map(|stdout| {
         std::thread::spawn(move || {
             let mut data = Vec::new();
@@ -78,7 +90,7 @@ fn run(program: &str, args: &[&str], input: Option<&[u8]>, limit: usize) -> Resu
         if start.elapsed() > Duration::from_secs(3) {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("{program} 超时");
+            bail!("{program}: {}", t("timed out", "超时"));
         }
         std::thread::sleep(Duration::from_millis(10));
     };
@@ -94,7 +106,14 @@ fn run(program: &str, args: &[&str], input: Option<&[u8]>, limit: usize) -> Resu
         None => Vec::new(),
     };
     ensure!(output.len() <= limit, "clipboard exceeds size limit");
-    ensure!(exit.success(), "{program} 失败；请检查 Wayland 剪贴板");
+    ensure!(
+        exit.success(),
+        "{program}: {}",
+        t(
+            "failed; check the Wayland clipboard",
+            "失败；请检查 Wayland 剪贴板"
+        )
+    );
     Ok(output)
 }
 

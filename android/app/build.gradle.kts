@@ -83,7 +83,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
+    // Material 3 Expressive APIs remain opt-in; access is isolated in the ui.design facade
+    // shared with lava_note, so keep this pinned to the version lava_note is built against.
+    val material3Version = "1.5.0-alpha26"
+    implementation("androidx.compose.material3:material3:$material3Version")
+    implementation("androidx.compose.material3:material3-window-size-class:$material3Version")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("dev.rikka.shizuku:api:13.1.5")

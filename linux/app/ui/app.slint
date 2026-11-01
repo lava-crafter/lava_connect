@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// State and callbacks shared by all pages; driven from src/main.rs.
+
+export struct DeviceRow {
+    id: string,
+    name: string,
+    platform: string,
+    state: string,
+    trusted: bool,
+    code: string,
+    text-enabled: bool,
+    image-enabled: bool,
+    in-group: bool,
+    group-compatible: bool,
+}
+
+export struct GroupRow { id: string, name: string, members: int }
+
+export enum Page { devices, groups, settings }
+
+export enum DialogKind { none, confirm-pairing, unpair, create-group, join-group, delete-group, send-text }
+
+export global App {
+    in property <string> identity;
+    in property <string> local-name;
+    in property <string> version;
+    in property <bool> paused;
+    in property <int> connected-count;
+    // StatusKind in src/main.rs; the text is localized in status-text().
+    in property <int> status-kind;
+    in property <string> status-detail;
+
+    in property <[DeviceRow]> devices;
+    in property <[GroupRow]> groups;
+    in property <string> active-group-id;
+    in property <string> active-group-name;
+    in property <DeviceRow> selected-device;
+    in property <bool> has-selected-device;
+
+    in-out property <Page> page;
+    in-out property <string> selected-device-id;
+    in-out property <string> filter-text;
+    in-out property <DialogKind> dialog;
+    in-out property <DeviceRow> dialog-device;
+
+    out property <string> default-group-id: "00000000-0000-0000-0000-000000000000";
+
+    callback select-device(string);
+    callback move-selection(int);
+    callback activate-selected();
+    callback device-action(string /* pair | confirm | cancel | unpair */, string /* device id */, string /* code */);
+    callback capability(string, int /* 1 = text, 2 = image */, bool);
+    callback group-action(string /* select | create | join | delete */, string /* name */, string /* group id */);
+    callback group-member(string /* group id */, string /* device id */, bool);
+    callback send-clipboard();
+    callback send-text(string);
+    callback toggle-pause();
+    callback copy(string);
+    callback filter-changed(string);
+    callback appearance-changed();
+    callback page-changed();
+    callback hide-window();
+    callback quit();
+
+    public pure function state-label(state: string) -> string {
+        if (state == "available") { return @tr("Available"); }
+        if (state == "connecting") { return @tr("Connecting"); }
+        if (state == "pairing") { return @tr("Pairing"); }
+        if (state == "connected") { return @tr("Connected"); }
+        if (state == "offline") { return @tr("Offline"); }
+        return state;
+    }
+
+    public pure function status-text(kind: int, detail: string) -> string {
+        if (kind == 1) { return @tr("Clipboard sync paused"); }
+        if (kind == 2) { return @tr("Clipboard sync resumed"); }
+        if (kind == 3) { return @tr("Received a remote clipboard"); }
+        if (kind == 4) { return detail; }
+        if (kind == 5) { return @tr("Resume clipboard sync first"); }
+        if (kind == 6) { return @tr("Copied"); }
+        if (kind == 7) { return @tr("Sent"); }
+        return @tr("Looking for devices on the local network…");
+    }
+}
