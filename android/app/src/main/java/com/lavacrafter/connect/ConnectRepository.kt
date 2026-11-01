@@ -85,6 +85,8 @@ class ConnectRepository(
 
     fun receivedImage() = service?.receivedImage()
 
+    fun updateBackgroundRead() = service?.updateBackgroundRead()
+
     fun greeting() =
         com.lavacrafter.connect.nativecore.NativeCore
             .greeting()

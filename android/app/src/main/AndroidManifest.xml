@@ -1,9 +1,13 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/><uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Granted via Shizuku or adb for KDE Connect-style background clipboard reading. -->
+    <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions"/><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="Lava Connect" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+        <activity android:name=".ClipboardReadActivity" android:exported="false" android:theme="@style/Theme.LavaConnect.ClipboardReader" android:excludeFromRecents="true" android:noHistory="true" android:taskAffinity=""/>
         <service android:name=".ConnectService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.files" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/></provider>
+        <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="${applicationId}.shizuku" android:multiprocess="false" android:enabled="true" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
     </application>
 </manifest>

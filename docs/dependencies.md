@@ -31,6 +31,7 @@
 | AndroidX lifecycle（所有直接引用模块） | 2.11.0 |
 | Compose BOM | 2026.09.00 |
 | JUnit 4 | 4.13.2（该坐标已是最新版） |
+| Shizuku API / provider | 13.1.5（2026-10-29 核对 Maven Central 最新稳定版） |
 | NDK / SDK build-tools / cargo-ndk | 30.0.16248370 / 37.0.0 / 4.1.2 |
 
 AGP 9 使用内置 Kotlin，移除 `org.jetbrains.kotlin.android` 和旧 task-level JVM target 配置，沿用 Java 17 目标；Compose 插件提供相应 Kotlin 工具链。NDK 版本在 Gradle、构建脚本和 CI 中一致。保留 ARM64 APK 和原有 JNI 导出/异常契约、LC01 身份文件格式。

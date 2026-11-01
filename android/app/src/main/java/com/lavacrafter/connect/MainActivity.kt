@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
         Text("Lava Connect", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Android restricts background clipboard reading. Incoming text and images are written in the background; if writing fails, return here to retry.",
+            "Incoming text and images are written in the background; if writing fails, return here to retry. Android restricts background reading: copies are sent while this screen is open, or from any app once background reading is set up.",
         )
         Spacer(Modifier.height(10.dp))
         Row {
@@ -136,6 +136,7 @@ class MainActivity : ComponentActivity() {
                 }.onFailure { vm.showError(it.message ?: "No image receiver") }
             }) { Text("Open received image") }
         }
+        BackgroundReadSection(state.backgroundRead, vm::updateBackgroundRead, vm::showError)
         Row {
             Button(onClick = vm::sendClipboard, enabled = state.running) { Text("Send clipboard") }
             Spacer(Modifier.width(8.dp))

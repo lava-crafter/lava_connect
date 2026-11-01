@@ -6,7 +6,9 @@ import android.content.*
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
@@ -17,7 +19,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 data class DeviceInfo(
     val id: String,
@@ -46,6 +52,7 @@ data class ConnectState(
     val imageAvailable: Boolean = false,
     val activeGroupId: String = "00000000-0000-0000-0000-000000000000",
     val groups: List<ClipboardGroup> = emptyList(),
+    val backgroundRead: String? = null,
 )
 
 class ConnectService : Service() {
@@ -67,6 +74,16 @@ class ConnectService : Service() {
     private val pendingClipboard = PendingClipboard<ClipData>()
     private var latestImage: Uri? = null
     private val binder = LocalBinder()
+    private val clipboard by lazy { getSystemService(ClipboardManager::class.java) }
+    private var logWatcher: Job? = null
+
+    // Owned by the current watcher; a stopped watcher must never touch its successor's process.
+    private var logProcess: AtomicReference<Process?>? = null
+    private val readThrottle = ReadThrottle()
+
+    // Intentionally empty: in the background Android refuses to call it and logs the denial
+    // that the log watcher reacts to. Foreground sending stays in MainActivity's listener.
+    private val denialTrigger = ClipboardManager.OnPrimaryClipChangedListener { }
 
     inner class LocalBinder : Binder() {
         fun service() = this@ConnectService
@@ -141,6 +158,7 @@ class ConnectService : Service() {
                             NativeCore.stop(native)
                         } else {
                             handle = native
+                            updateBackgroundRead()
                         }
                     }
                 }
@@ -288,7 +306,119 @@ class ConnectService : Service() {
 
     fun setForeground(callback: (() -> Unit)?) {
         applyPending = callback
+        // Android 13+ asks before granting log access, which only works in the foreground,
+        // so (re)start a stopped watcher whenever the UI is shown.
+        if (callback != null) updateBackgroundRead()
         callback?.invoke()
+    }
+
+    /** Starts or stops the KDE Connect-style log watcher to match settings and permissions. */
+    fun updateBackgroundRead() {
+        val wanted = !destroyed && handle != 0L && BackgroundRead.enabled(this) && BackgroundRead.ready(this)
+        if (wanted && logWatcher?.isActive != true) {
+            startLogWatcher()
+        } else if (!wanted) {
+            stopLogWatcher()
+        }
+    }
+
+    private fun startLogWatcher() {
+        clipboard.addPrimaryClipChangedListener(denialTrigger)
+        val matcher = DenialLogMatcher(packageName)
+        // Only follow ClipboardService errors logged from now on.
+        val since = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        val owned = AtomicReference<Process?>()
+        logProcess = owned
+        val consent = Build.VERSION.SDK_INT >= 33
+        _state.value = _state.value.copy(backgroundRead = if (consent) "Waiting for log access" else "Background reading active")
+        logWatcher =
+            scope.launch {
+                val ended =
+                    try {
+                        withContext(Dispatchers.IO) {
+                            fun logcat(vararg args: String) =
+                                ProcessBuilder("logcat", *args).redirectErrorStream(true).start().also {
+                                    owned.set(it)
+                                    // stopLogWatcher cancels before it destroys, so a stop that missed the
+                                    // process is seen here instead of leaving logcat blocked in readLine.
+                                    ensureActive()
+                                }
+                            if (consent) {
+                                // Android 13+ asks the user whenever a log reader starts. "Don't allow"
+                                // may leave logcat running with only this app's lines, so check that
+                                // system lines are visible before relying on the watcher. The dump does
+                                // not wait for the dialog and sees nothing while it is open; closing it
+                                // resumes MainActivity, whose setForeground restarts this check against
+                                // the answer Android remembers for a while. An unknown option prints an
+                                // error line and keeps the old behavior.
+                                val probe = logcat("-d", "--uid=${android.os.Process.SYSTEM_UID}")
+                                val visible =
+                                    probe.inputStream.bufferedReader().useLines { lines ->
+                                        lines.any { !it.startsWith("--------- ") }
+                                    }
+                                owned.compareAndSet(probe, null)
+                                probe.destroy()
+                                if (!visible) return@withContext "Log access was not allowed; reopen Lava Connect and choose Allow"
+                                withContext(Dispatchers.Main) {
+                                    _state.value =
+                                        _state.value.copy(backgroundRead = "Background reading active")
+                                }
+                            }
+                            val process = logcat("-T", since, BackgroundRead.logcatFilter(), "*:S")
+                            process.inputStream.bufferedReader().useLines { lines ->
+                                for (line in lines) {
+                                    // Log lines are never stored or sent; only the match is used.
+                                    if (matcher.matches(line)) withContext(Dispatchers.Main) { launchBackgroundReader() }
+                                }
+                            }
+                            "Log access ended; open Lava Connect to resume background reading"
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        e.message ?: "Unable to read system log"
+                    } finally {
+                        owned.getAndSet(null)?.destroy()
+                    }
+                // A stopped watcher's listener and state already belong to stopLogWatcher or a successor.
+                if (logWatcher !== coroutineContext.job) return@launch
+                logWatcher = null
+                logProcess = null
+                clipboard.removePrimaryClipChangedListener(denialTrigger)
+                _state.value = _state.value.copy(backgroundRead = ended)
+            }
+    }
+
+    private fun stopLogWatcher() {
+        logWatcher?.cancel()
+        logWatcher = null
+        // Destroying the process closes the stream that blocks the IO thread.
+        logProcess?.getAndSet(null)?.destroy()
+        logProcess = null
+        clipboard.removePrimaryClipChangedListener(denialTrigger)
+        _state.value = _state.value.copy(backgroundRead = null)
+    }
+
+    private fun launchBackgroundReader() {
+        val wait = readThrottle.schedule(SystemClock.elapsedRealtime()) ?: return
+        val watcher = logWatcher
+        if (wait == 0L) {
+            startBackgroundReader()
+        } else {
+            // A copy right after the previous launch is read late rather than dropped.
+            scope.launch {
+                delay(wait)
+                if (watcher != null && watcher === logWatcher) startBackgroundReader()
+            }
+        }
+    }
+
+    private fun startBackgroundReader() {
+        try {
+            startActivity(ClipboardReadActivity.intent(this))
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(backgroundRead = e.message ?: "Unable to open clipboard reader")
+        }
     }
 
     fun applyReceivedClipboard() {
@@ -302,7 +432,8 @@ class ConnectService : Service() {
                         )
                     },
                     write = { clip ->
-                        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                        readThrottle.localWrite(SystemClock.elapsedRealtime())
+                        clipboard.setPrimaryClip(clip)
                     },
                 )
             if (applied && _state.value.error == CLIPBOARD_WRITE_ERROR) {
@@ -318,24 +449,38 @@ class ConnectService : Service() {
     fun receivedImage(): Uri? = latestImage
 
     fun sendCurrentClipboard() {
-        val clip = (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip ?: error("Clipboard is empty")
+        val clip = clipboard.primaryClip ?: error("Clipboard is empty")
+        work { sendClip(clip) }
+    }
+
+    /** Clip read by [ClipboardReadActivity] without an explicit user action. */
+    fun sendBackgroundClip(clip: ClipData) {
+        // Password managers mark secrets sensitive; only an explicit send may forward them.
+        if (clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true) return
+        work { sendClip(clip) }
+    }
+
+    /** Runs on the IO dispatcher: resolving URI clips queries and may read content providers. */
+    private fun sendClip(clip: ClipData) {
         require(clip.itemCount > 0)
         val item = clip.getItemAt(0)
         if (item.uri != null &&
             (clip.description.hasMimeType("image/*") || contentResolver.getType(item.uri)?.startsWith("image/") == true)
         ) {
-            sendImage(item.uri)
+            sendImageNow(item.uri)
         } else {
-            sendText(item.text?.toString() ?: item.coerceToText(this).toString())
+            sendBytes("text/plain", (item.text?.toString() ?: item.coerceToText(this).toString()).toByteArray(Charsets.UTF_8))
         }
     }
 
     fun sendImage(uri: Uri) {
-        work {
-            val png =
-                contentResolver.openInputStream(uri)?.use { ClipboardImages.png(ClipboardImages.read(it)) } ?: error("Cannot open image")
-            sendBytes("image/png", png)
-        }
+        work { sendImageNow(uri) }
+    }
+
+    private fun sendImageNow(uri: Uri) {
+        val png =
+            contentResolver.openInputStream(uri)?.use { ClipboardImages.png(ClipboardImages.read(it)) } ?: error("Cannot open image")
+        sendBytes("image/png", png)
     }
 
     fun sendText(text: String) {
@@ -396,6 +541,7 @@ class ConnectService : Service() {
     }
 
     private fun endConnection() {
+        stopLogWatcher()
         if (handle != 0L) {
             runCatching { NativeCore.stop(handle) }
             handle = 0L

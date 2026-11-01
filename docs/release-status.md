@@ -19,6 +19,8 @@
 
 ## 阻塞 / 未确认
 
+- Android 后台自动读取（KDE Connect 方式 + Shizuku 授权）已实现：本轮 `ktlintCheck`、`assembleDebug`、`testDebugUnitTest`（14 项，新增日志匹配、debug/release 包名前缀、节流和本机写入抑制）、`lintDebug` 通过。**未做真机验收**，以下需在设备上确认：API 36 logcat 过滤写法、Android 13+ 日志访问确认框、后台启动 Activity 是否被悬浮窗权限豁免、OEM（如 MIUI）对 `pm grant` 的限制、图片 URI 在透明 Activity 结束后仍可读取。
+
 - 本轮未安装设备或操作用户剪贴板；新组功能未做多机真机验收，不以模拟平台的 loopback 测试代替真实组 UI/网络验收。此前后台写入真机记录是前一版本结果，并非新版组功能的真机结论。组使用、迁移和降级限制见[groups.md](groups.md)。
 
 - AGP 9.4 已支持 compileSdk 37，原兼容性警告消除；仍有上游 Gradle `Configuration.setVisible` 弃用提醒、既有 Kotlin `Unit` 表达式及 Android lint 警告，未隐藏这些提醒。
