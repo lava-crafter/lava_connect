@@ -86,6 +86,7 @@ internal fun DevicesScreen(
             onBack = { onSelectDevice(null) },
             onPair = { onPair(device.id) },
             onComparePairing = { pairingId = device.id },
+            onCancelPair = { onCancelPair(device.id) },
             onUnpair = { onUnpair(device.id) },
             onCapability = { capability, enabled -> onCapability(device.id, capability, enabled) },
             onGroupMember = { onGroupMember(device.id, it) },
@@ -136,6 +137,10 @@ internal fun DevicesScreen(
         PairingDialog(
             device = device,
             onDismiss = { pairingId = null },
+            onReject = {
+                onCancelPair(device.id)
+                pairingId = null
+            },
             onConfirm = {
                 onConfirmPair(device.id, device.pairingCode.orEmpty())
                 pairingId = null

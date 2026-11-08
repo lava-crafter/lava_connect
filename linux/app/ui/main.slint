@@ -221,9 +221,22 @@ export component MainWindow inherits Window {
 
     public function open-dialog(kind: DialogKind) {
         App.dialog = kind;
-        if (kind == DialogKind.create-group) { group-name.focus(); }
-        if (kind == DialogKind.join-group) { join-code.focus(); }
-        if (kind == DialogKind.send-text) { send-input.focus(); }
+    }
+
+    // Pages, context menus and src/main.rs open and close dialogs by assigning App.dialog, so
+    // move focus here: into the dialog's text field, or to the root so Enter/Esc reach `keys`
+    // instead of the filter field or the button that opened the dialog.
+    property <DialogKind> current-dialog: App.dialog;
+    changed current-dialog => {
+        if (current-dialog == DialogKind.create-group) {
+            group-name.focus();
+        } else if (current-dialog == DialogKind.join-group) {
+            join-code.focus();
+        } else if (current-dialog == DialogKind.send-text) {
+            send-input.focus();
+        } else {
+            keys.focus();
+        }
     }
 
     keys := FocusScope {
@@ -431,7 +444,11 @@ export component MainWindow inherits Window {
             confirm-enabled: group-name.text != "";
             confirm => { confirm-dialog(); }
             dismiss => { close-dialog(); }
-            group-name := TextField { placeholder: @tr("Group name"); }
+            // TextInput consumes Return for `accepted`, so it never reaches `keys`.
+            group-name := TextField {
+                placeholder: @tr("Group name");
+                accepted => { confirm-dialog(); }
+            }
         }
         Dialog {
             visible: App.dialog == DialogKind.join-group;
@@ -441,8 +458,17 @@ export component MainWindow inherits Window {
             confirm-enabled: join-code.text != "" && join-name.text != "";
             confirm => { confirm-dialog(); }
             dismiss => { close-dialog(); }
-            join-code := TextField { placeholder: @tr("Group code"); monospace: true; }
-            join-name := TextField { placeholder: @tr("Name on this device"); }
+            join-code := TextField {
+                placeholder: @tr("Group code");
+                monospace: true;
+                accepted => {
+                    if (join-name.text == "") { join-name.focus(); } else { confirm-dialog(); }
+                }
+            }
+            join-name := TextField {
+                placeholder: @tr("Name on this device");
+                accepted => { confirm-dialog(); }
+            }
             Text {
                 text: @tr("Group codes identify groups. They are not passwords and do not pair or authorize devices.");
                 color: Theme.c.on-surface-variant;
@@ -458,7 +484,10 @@ export component MainWindow inherits Window {
             confirm-enabled: send-input.text != "";
             confirm => { confirm-dialog(); }
             dismiss => { close-dialog(); }
-            send-input := TextField { placeholder: @tr("Text to send"); }
+            send-input := TextField {
+                placeholder: @tr("Text to send");
+                accepted => { confirm-dialog(); }
+            }
         }
     }
 }

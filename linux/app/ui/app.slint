@@ -30,7 +30,10 @@ export global App {
     in property <int> status-kind;
     in property <string> status-detail;
 
+    // Devices page list, narrowed by filter-text.
     in property <[DeviceRow]> devices;
+    // Every trusted device, unfiltered; the Groups page lists these as possible members.
+    in property <[DeviceRow]> trusted-devices;
     in property <[GroupRow]> groups;
     in property <string> active-group-id;
     in property <string> active-group-name;
@@ -41,6 +44,8 @@ export global App {
     in-out property <string> selected-device-id;
     in-out property <string> filter-text;
     in-out property <DialogKind> dialog;
+    // Device shown by the confirm-pairing and unpair dialogs. src/main.rs refreshes it from
+    // every snapshot and closes the dialog once the device leaves the state it was opened for.
     in-out property <DeviceRow> dialog-device;
 
     out property <string> default-group-id: "00000000-0000-0000-0000-000000000000";
@@ -61,6 +66,12 @@ export global App {
     callback page-changed();
     callback hide-window();
     callback quit();
+
+    /// Untrusted and not already showing a code. The core's Pair command handles both a
+    /// known session ("connecting") and an advertisement it still has to dial ("available").
+    public pure function can-pair(device: DeviceRow) -> bool {
+        return !device.trusted && device.code == "";
+    }
 
     public pure function state-label(state: string) -> string {
         if (state == "available") { return @tr("Available"); }

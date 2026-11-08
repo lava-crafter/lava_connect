@@ -91,18 +91,16 @@ export component GroupsPage inherits HorizontalLayout {
             VerticalLayout {
                 spacing: Theme.space-xs;
                 SectionHeader { text: @tr("Members"); }
-                for device in App.devices: VerticalLayout {
-                    if device.trusted: ListRow {
-                        icon: Icons.platform(device.platform);
-                        title: device.name;
-                        description: device.group-compatible
-                            ? @tr("The device has selected this group too")
-                            : @tr("The device must join and select this group");
-                        Switch {
-                            checked: device.in-group;
-                            y: (parent.height - self.height) / 2;
-                            toggled(on) => { App.group-member(App.active-group-id, device.id, on); }
-                        }
+                for device in App.trusted-devices: ListRow {
+                    icon: Icons.platform(device.platform);
+                    title: device.name;
+                    description: device.group-compatible
+                        ? @tr("The device has selected this group too")
+                        : @tr("The device must join and select this group");
+                    Switch {
+                        checked: device.in-group;
+                        y: (parent.height - self.height) / 2;
+                        toggled(on) => { App.group-member(App.active-group-id, device.id, on); }
                     }
                 }
                 HDivider { }

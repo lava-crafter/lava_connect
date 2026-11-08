@@ -25,7 +25,7 @@ component DeviceListRow inherits Interactive {
 
     menu := ContextMenuArea {
         Menu {
-            if !root.device.trusted && root.device.state == "available": MenuItem {
+            if App.can-pair(root.device): MenuItem {
                 title: @tr("Pair");
                 activated => { App.device-action("pair", root.device.id, ""); }
             }
@@ -92,7 +92,7 @@ component DeviceListRow inherits Interactive {
             font-family: "monospace";
             vertical-alignment: center;
         }
-        if !root.device.trusted && root.device.state == "available": Button {
+        if App.can-pair(root.device): Button {
             text: @tr("Pair");
             kind: ButtonKind.tonal;
             height: 32px;
@@ -185,7 +185,7 @@ component DeviceDetail inherits ScrollView {
                 font-size: Theme.body-medium;
                 wrap: word-wrap;
             }
-            if root.device.state == "available": HorizontalLayout {
+            if App.can-pair(root.device): HorizontalLayout {
                 alignment: start;
                 Button {
                     text: @tr("Pair");

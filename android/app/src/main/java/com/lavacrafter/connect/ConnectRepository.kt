@@ -83,6 +83,8 @@ class ConnectRepository(
 
     fun applyClipboard() = requireService().applyReceivedClipboard()
 
+    fun clearError() = service?.clearError()
+
     fun receivedImage() = service?.receivedImage()
 
     fun updateBackgroundRead() = service?.updateBackgroundRead()

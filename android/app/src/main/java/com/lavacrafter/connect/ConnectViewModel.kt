@@ -133,6 +133,8 @@ class ConnectViewModel(
     }
 
     fun clearError() {
+        // Clear the service's copy too; otherwise its next state emission brings the error back.
+        repository.clearError()
         _state.value = _state.value.copy(error = null)
     }
 }

@@ -12,15 +12,19 @@ internal fun ConnectTheme(
     appearance: Appearance,
     content: @Composable () -> Unit,
 ) {
-    val dark =
-        when (appearance.themeMode) {
-            ThemeMode.SYSTEM -> isSystemInDarkTheme()
-            ThemeMode.LIGHT -> false
-            ThemeMode.DARK -> true
-        }
+    val dark = appearance.isDark()
     LavaTheme(
         colorScheme = lavaColorScheme(isDarkMode = dark, accentValue = appearance.accent),
         profile = lavaThemeProfile(appearance.shapeProfile),
         content = content,
     )
 }
+
+/** Whether the app draws dark, after applying the in-app Theme setting over the system's night mode. */
+@Composable
+internal fun Appearance.isDark(): Boolean =
+    when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }

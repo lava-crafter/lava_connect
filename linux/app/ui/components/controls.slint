@@ -143,9 +143,10 @@ export component IconButton inherits Interactive {
     }
 }
 
-/// M3 switch, 44x24 on desktop.
+/// M3 switch, 44x24 on desktop. `checked` is owned by the caller: a click only reports the
+/// requested value through toggled(), so the switch always shows the real (applied) state.
 export component Switch inherits Interactive {
-    in-out property <bool> checked;
+    in property <bool> checked;
     callback toggled(bool);
 
     width: 44px;
@@ -160,10 +161,7 @@ export component Switch inherits Interactive {
     border-width: root.checked ? 0px : 2px;
     border-color: Theme.c.outline;
     animate background { duration: Theme.micro; }
-    clicked => {
-        checked = !checked;
-        toggled(checked);
-    }
+    clicked => { toggled(!checked); }
 
     Rectangle {
         property <length> d: root.checked ? 16px : 12px;
@@ -230,9 +228,10 @@ export component TextField inherits Rectangle {
 }
 
 /// LavaSegmentedSelector: outer small shape, 1px outline-variant, selected segment in primary-container.
+/// `current` is owned by the caller, like Switch.checked; a click only reports changed(index).
 export component Segmented inherits Rectangle {
     in property <[string]> options;
-    in-out property <int> current;
+    in property <int> current;
     callback changed(int);
 
     height: Theme.control-height;
@@ -251,10 +250,7 @@ export component Segmented inherits Rectangle {
             accessible-role: tab;
             accessible-label: option;
             accessible-item-selected: index == root.current;
-            clicked => {
-                root.current = index;
-                root.changed(index);
-            }
+            clicked => { root.changed(index); }
             Text {
                 text: option;
                 horizontal-alignment: center;

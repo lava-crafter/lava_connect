@@ -14,21 +14,31 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc,
+        OnceLock, mpsc,
     },
     time::Duration,
 };
 slint::include_modules!();
 
-/// True when the user's locale prefers Chinese; used for text produced outside Slint
-/// (tray menu, platform errors). Slint strings go through the bundled gettext catalog.
+/// Set once the Slint catalog has been chosen, so Rust-side text always matches the UI.
+static CHINESE: OnceLock<bool> = OnceLock::new();
+
+/// True when the UI is in Chinese; used for text produced outside Slint (tray menu, platform
+/// errors, the Default group's name). Slint strings go through the bundled gettext catalog.
 pub fn chinese() -> bool {
-    locale().is_some_and(|l| l.starts_with("zh"))
+    *CHINESE.get_or_init(|| translation_locale().is_some())
 }
 
 /// Pick the English or Chinese variant of a message produced in Rust.
 pub fn t(en: &'static str, zh: &'static str) -> &'static str {
     if chinese() { zh } else { en }
+}
+
+/// The bundled Slint catalog for the user's locale, if any. Only zh_CN ships, so every Chinese
+/// locale (zh_TW, zh_HK, plain zh) uses it, like Android's values-zh.
+fn translation_locale() -> Option<&'static str> {
+    let locale = locale()?;
+    (locale == "zh" || locale.starts_with("zh_")).then_some("zh_CN")
 }
 
 fn locale() -> Option<String> {
@@ -163,14 +173,15 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let ui = MainWindow::new()?;
-    // Must run after the first component exists. Prefer the full locale (zh_CN), then the
-    // language alone; unknown locales keep the English source strings.
-    if let Some(locale) = locale() {
-        let language = locale.split('_').next().unwrap_or_default().to_owned();
-        if slint::select_bundled_translation(&locale).is_err() {
-            let _ = slint::select_bundled_translation(&language);
-        }
+    // Must run after the first component exists. Slint already guessed a catalog from
+    // sys-locale, which reads the environment in a different order than locale(); select
+    // explicitly so the Slint UI and the Rust-side text always agree.
+    let translated = translation_locale()
+        .is_some_and(|catalog| slint::select_bundled_translation(catalog).is_ok());
+    if !translated {
+        let _ = slint::select_bundled_translation("");
     }
+    let _ = CHINESE.set(translated);
     let settings = Rc::new(RefCell::new(UiSettings::load()));
     apply_appearance(&ui, &settings.borrow());
     {
@@ -399,7 +410,8 @@ fn wire_callbacks(ui: &MainWindow, tx: &mpsc::Sender<Intent>, settings: &Rc<RefC
         if device.state == "pairing" && !device.code.is_empty() {
             app.set_dialog_device(device);
             app.set_dialog(DialogKind::ConfirmPairing);
-        } else if !device.trusted && device.state == "available" {
+        } else if !device.trusted && device.code.is_empty() {
+            // Same condition as App.can-pair in ui/app.slint.
             let _ = send.send(Intent::Core(Command::Pair {
                 device_id: device.id.to_string(),
             }));
@@ -576,11 +588,16 @@ fn group_name(id: &str, name: &str) -> String {
 
 fn update_ui(ui: &MainWindow, snapshot: Snapshot, status: &Status, paused: bool) {
     let app = ui.global::<App>();
-    app.set_identity(snapshot.device_id.clone().into());
-    app.set_local_name(snapshot.device_name.clone().into());
     app.set_paused(paused);
     app.set_status_kind(status.kind as i32);
     app.set_status_detail(status.detail.clone().into());
+    // The controller posts every tick; only rebuild models when the core's state changed.
+    let unchanged = LAST_SNAPSHOT.with(|last| last.borrow().as_ref() == Some(&snapshot));
+    if unchanged {
+        return;
+    }
+    app.set_identity(snapshot.device_id.clone().into());
+    app.set_local_name(snapshot.device_name.clone().into());
     app.set_connected_count(
         snapshot
             .devices
@@ -598,17 +615,18 @@ fn update_ui(ui: &MainWindow, snapshot: Snapshot, status: &Status, paused: bool)
             .unwrap_or_default()
             .into(),
     );
-    app.set_groups(ModelRc::new(VecModel::from(
-        snapshot
-            .groups
-            .iter()
-            .map(|g| GroupRow {
-                id: g.id.clone().into(),
-                name: group_name(&g.id, &g.name).into(),
-                members: g.members.len() as i32,
-            })
-            .collect::<Vec<_>>(),
-    )));
+    let groups = snapshot
+        .groups
+        .iter()
+        .map(|g| GroupRow {
+            id: g.id.clone().into(),
+            name: group_name(&g.id, &g.name).into(),
+            members: g.members.len() as i32,
+        })
+        .collect::<Vec<_>>();
+    if !same_rows(&app.get_groups(), &groups) {
+        app.set_groups(ModelRc::new(VecModel::from(groups)));
+    }
     LAST_SNAPSHOT.with(|last| *last.borrow_mut() = Some(snapshot));
     render_devices(ui);
 }
@@ -626,6 +644,11 @@ fn device_row(d: &lava_core::Device) -> DeviceRow {
         in_group: d.sync_in_group,
         group_compatible: d.group_compatible,
     }
+}
+
+/// True when `model` already holds exactly `rows`, so replacing it would only reset the repeater.
+fn same_rows<T: Clone + PartialEq + 'static>(model: &ModelRc<T>, rows: &[T]) -> bool {
+    model.row_count() == rows.len() && model.iter().zip(rows).all(|(a, b)| a == *b)
 }
 
 /// Applies the filter to the device list and refreshes the selected device's details.
@@ -651,14 +674,58 @@ fn render_snapshot_devices(ui: &MainWindow, snapshot: &Snapshot) {
         })
         .map(device_row)
         .collect::<Vec<_>>();
-    app.set_devices(ModelRc::new(VecModel::from(rows)));
+    if !same_rows(&app.get_devices(), &rows) {
+        app.set_devices(ModelRc::new(VecModel::from(rows)));
+    }
+    // The Groups page lists members from this unfiltered list, not from the filtered one.
+    let trusted = snapshot
+        .devices
+        .iter()
+        .filter(|d| d.trusted)
+        .map(device_row)
+        .collect::<Vec<_>>();
+    if !same_rows(&app.get_trusted_devices(), &trusted) {
+        app.set_trusted_devices(ModelRc::new(VecModel::from(trusted)));
+    }
     let selected = app.get_selected_device_id();
     match snapshot.devices.iter().find(|d| d.id == selected.as_str()) {
         Some(device) => {
-            app.set_selected_device(device_row(device));
+            let row = device_row(device);
+            if app.get_selected_device() != row {
+                app.set_selected_device(row);
+            }
             app.set_has_selected_device(true);
         }
         None => app.set_has_selected_device(false),
+    }
+    refresh_dialog_device(&app, snapshot);
+}
+
+/// Keeps the confirm-pairing and unpair dialogs on the device's current state. A pairing
+/// dialog closes once that pairing ends (peer cancelled, paired, disconnected), and shows the
+/// new code if pairing restarted, so the user never confirms a code the peer no longer shows.
+fn refresh_dialog_device(app: &App, snapshot: &Snapshot) {
+    let dialog = app.get_dialog();
+    if !matches!(dialog, DialogKind::ConfirmPairing | DialogKind::Unpair) {
+        return;
+    }
+    let id = app.get_dialog_device().id;
+    let current = snapshot
+        .devices
+        .iter()
+        .find(|d| d.id == id.as_str())
+        .filter(|d| match dialog {
+            DialogKind::ConfirmPairing => d.state == "pairing" && d.pairing_code.is_some(),
+            _ => d.trusted,
+        });
+    match current {
+        Some(device) => {
+            let row = device_row(device);
+            if app.get_dialog_device() != row {
+                app.set_dialog_device(row);
+            }
+        }
+        None => app.set_dialog(DialogKind::None),
     }
 }
 

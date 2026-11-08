@@ -56,6 +56,7 @@ internal fun DeviceDetail(
     onBack: () -> Unit,
     onPair: () -> Unit,
     onComparePairing: () -> Unit,
+    onCancelPair: () -> Unit,
     onUnpair: () -> Unit,
     onCapability: (Int, Boolean) -> Unit,
     onGroupMember: (Boolean) -> Unit,
@@ -111,8 +112,13 @@ internal fun DeviceDetail(
                         )
                         Text(stringResource(R.string.pairing_message), style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.size(LavaSpacing.medium))
-                        Button(onClick = onComparePairing, shape = MaterialTheme.shapes.small) {
-                            Text(stringResource(R.string.device_confirm_pairing))
+                        Row(horizontalArrangement = Arrangement.spacedBy(LavaSpacing.small)) {
+                            Button(onClick = onComparePairing, shape = MaterialTheme.shapes.small) {
+                                Text(stringResource(R.string.device_confirm_pairing))
+                            }
+                            OutlinedButton(onClick = onCancelPair, shape = MaterialTheme.shapes.small) {
+                                Text(stringResource(R.string.common_cancel))
+                            }
                         }
                     }
                 }

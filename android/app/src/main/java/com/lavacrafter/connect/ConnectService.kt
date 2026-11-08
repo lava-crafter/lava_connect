@@ -69,6 +69,7 @@ class ConnectService : Service() {
     @Volatile private var destroyed = false
     private var lock: WifiManager.MulticastLock? = null
     private val _state = MutableStateFlow(ConnectState())
+    private var lastCoreError: String? = null
     val state = _state.asStateFlow()
     private var foreground = false
     private var applyPending: (() -> Unit)? = null
@@ -136,6 +137,7 @@ class ConnectService : Service() {
 
     private fun startCore() {
         starting = true
+        lastCoreError = null
         scope.launch {
             try {
                 val wifi = getSystemService(WIFI_SERVICE) as WifiManager
@@ -211,6 +213,11 @@ class ConnectService : Service() {
                                 )
                             }
                         }
+                    // The core keeps its last error in every snapshot (and also reports it as an
+                    // "error" event). Only surface it when it changes, so a dismissed error stays gone.
+                    val coreError = snapshot.optString("error").takeUnless { it == "null" || it.isBlank() }
+                    val newCoreError = coreError?.takeIf { it != lastCoreError }
+                    lastCoreError = coreError
                     _state.value =
                         _state.value.copy(
                             running = snapshot.optBoolean("running"),
@@ -219,8 +226,7 @@ class ConnectService : Service() {
                             devices = devices,
                             groups = groups,
                             activeGroupId = activeGroupId,
-                            error =
-                                snapshot.optString("error").takeUnless { it == "null" || it.isBlank() } ?: _state.value.error,
+                            error = newCoreError ?: _state.value.error,
                         )
                     processEvents(events)
                     delay(400)
@@ -532,6 +538,11 @@ class ConnectService : Service() {
 
     private fun fail(message: String) {
         _state.value = _state.value.copy(error = message)
+    }
+
+    /** The UI has shown the current error; drop it so the next state emission does not repeat it. */
+    fun clearError() {
+        _state.value = _state.value.copy(error = null)
     }
 
     override fun onDestroy() {

@@ -18,16 +18,21 @@ import com.lavacrafter.connect.R
 import com.lavacrafter.connect.ui.design.LavaSpacing
 import com.lavacrafter.connect.ui.design.component.LavaDialog
 
-/** Final check before trusting a device: both sides must show the same code and fingerprint. */
+/**
+ * Final check before trusting a device: both sides must show the same code and fingerprint.
+ * Tapping outside only closes the dialog; the Cancel button rejects the pairing.
+ */
 @Composable
 internal fun PairingDialog(
     device: DeviceInfo,
     onDismiss: () -> Unit,
+    onReject: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     LavaDialog(
         title = stringResource(R.string.pairing_title),
         onDismissRequest = onDismiss,
+        onDismissButton = onReject,
         onConfirm = onConfirm,
     ) {
         Column {

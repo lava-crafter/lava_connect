@@ -25,6 +25,7 @@ fun LavaDialog(
     confirmEnabled: Boolean = true,
     dismissLabel: String? = null,
     destructive: Boolean = false,
+    onDismissButton: () -> Unit = onDismissRequest,
     content: (@Composable () -> Unit)? = null,
 ) {
     val resolvedConfirmLabel = confirmLabel ?: stringResource(R.string.common_confirm)
@@ -47,7 +48,7 @@ fun LavaDialog(
             resolvedDismissLabel.let { label ->
                 {
                     OutlinedButton(
-                        onClick = onDismissRequest,
+                        onClick = onDismissButton,
                         shape = MaterialTheme.shapes.small,
                     ) {
                         Text(label)
