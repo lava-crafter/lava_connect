@@ -255,7 +255,7 @@ export component DevicesPage inherits HorizontalLayout {
         if App.devices.length == 0: EmptyState {
             icon: Icons.wifi-find;
             title: App.filter-text == "" ? @tr("No devices yet") : @tr("No matching devices");
-            description: App.filter-text == "" ? @tr("Devices on the same network appear here automatically.") : "";
+            description: App.filter-text == "" ? @tr("Devices on the same network appear here automatically. If one does not, use Add device to enter its IP address.") : "";
         }
         if App.devices.length > 0: ScrollView {
             VerticalLayout {

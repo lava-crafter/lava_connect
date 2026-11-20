@@ -4,7 +4,9 @@ mod platform;
 mod settings;
 mod theme;
 use anyhow::{Context, Result, bail};
-use lava_core::{Command, CoreConfig, CoreEvent, CoreHandle, DEFAULT_GROUP_ID, Snapshot};
+use lava_core::{
+    Command, CoreConfig, CoreEvent, CoreHandle, DEFAULT_GROUP_ID, DEFAULT_PORT, Snapshot,
+};
 use settings::UiSettings;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::{
@@ -12,9 +14,9 @@ use std::{
     path::PathBuf,
     rc::Rc,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
-        OnceLock, mpsc,
+        mpsc,
     },
     time::Duration,
 };
@@ -60,6 +62,8 @@ enum Intent {
     SendClipboard,
     SendText(String),
     Copy(String),
+    /// Restart the core on another UDP port.
+    Restart(u16),
     Show,
     Pause,
     Quit,
@@ -76,6 +80,7 @@ enum StatusKind {
     ResumeFirst = 5,
     Copied = 6,
     Sent = 7,
+    Listening = 8,
 }
 
 #[derive(Clone)]
@@ -160,8 +165,23 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let (config, headless) = arguments()?;
-    let mut core = CoreHandle::start(config)?;
+    let (mut config, headless) = arguments()?;
+    let (mut core, status) = match CoreHandle::start(config.clone()) {
+        Ok(core) => (core, Status::new(StatusKind::Discovering)),
+        // Another program may hold the saved port; keep syncing on a random one instead of
+        // refusing to start. A second failure (e.g. identity lock) is the real error.
+        Err(error) if config.listen_port != 0 => {
+            let message = format!(
+                "{} {}: {error:#}",
+                t("Unable to listen on port", "无法监听端口"),
+                config.listen_port
+            );
+            eprintln!("{message}");
+            config.listen_port = 0;
+            (CoreHandle::start(config.clone())?, Status::error(message))
+        }
+        Err(error) => return Err(error),
+    };
     let (tx, rx) = mpsc::channel();
     let signal = tx.clone();
     ctrlc::set_handler(move || {
@@ -169,7 +189,7 @@ fn main() -> Result<()> {
     })?;
     let stopped = Arc::new(AtomicBool::new(false));
     if headless {
-        controller(&mut core, rx, None, stopped);
+        controller(&mut core, config, rx, None, stopped, status);
         return Ok(());
     }
     let ui = MainWindow::new()?;
@@ -188,6 +208,8 @@ fn main() -> Result<()> {
         let s = settings.borrow();
         let app = ui.global::<App>();
         app.set_version(env!("CARGO_PKG_VERSION").into());
+        app.set_default_port(DEFAULT_PORT.into());
+        app.set_port_setting(config.listen_port.into());
         app.set_page(match s.page {
             1 => Page::Groups,
             2 => Page::Settings,
@@ -251,7 +273,8 @@ fn main() -> Result<()> {
         }
     });
     let weak = ui.as_weak();
-    let worker = std::thread::spawn(move || controller(&mut core, rx, Some(weak), stopped));
+    let worker =
+        std::thread::spawn(move || controller(&mut core, config, rx, Some(weak), stopped, status));
     ui.show()?;
     slint::run_event_loop_until_quit()?;
     remember_size(&ui, &settings);
@@ -362,6 +385,30 @@ fn wire_callbacks(ui: &MainWindow, tx: &mpsc::Sender<Intent>, settings: &Rc<RefC
         let _ = send.send(Intent::Copy(text.to_string()));
     });
     let send = tx.clone();
+    app.on_add_device(move |ip, port| {
+        let address = with_port(ip.trim(), port.trim());
+        let _ = send.send(core(Command::AddAddress { address }));
+    });
+    let send = tx.clone();
+    app.on_set_port(move |text| {
+        // Same rule as App.valid-port: 0 (random) or an unprivileged port.
+        match text.trim().parse::<u16>() {
+            Ok(port) if port == 0 || port >= 1024 => {
+                let _ = send.send(Intent::Restart(port));
+            }
+            _ => {}
+        }
+    });
+    let weak = ui.as_weak();
+    let s = settings.clone();
+    app.on_port_applied(move |port| {
+        let Some(ui) = weak.upgrade() else { return };
+        ui.global::<App>().set_port_setting(port);
+        let mut settings = s.borrow_mut();
+        settings.listen_port = port as u16;
+        settings.save();
+    });
+    let send = tx.clone();
     app.on_quit(move || {
         let _ = send.send(Intent::Quit);
     });
@@ -446,13 +493,14 @@ fn wire_callbacks(ui: &MainWindow, tx: &mpsc::Sender<Intent>, settings: &Rc<RefC
 
 fn controller(
     core: &mut CoreHandle,
+    mut config: CoreConfig,
     rx: mpsc::Receiver<Intent>,
     ui: Option<slint::Weak<MainWindow>>,
     stopped: Arc<AtomicBool>,
+    mut status: Status,
 ) {
     let mut paused = false;
     let mut previous: Option<(String, Vec<u8>)> = None;
-    let mut status = Status::new(StatusKind::Discovering);
     while !stopped.load(Ordering::Relaxed) {
         match rx.recv_timeout(Duration::from_millis(600)) {
             Ok(Intent::Quit) => break,
@@ -468,6 +516,17 @@ fn controller(
                 if let Some(ui) = &ui {
                     let _ = ui.upgrade_in_event_loop(|ui| {
                         let _ = ui.show();
+                    });
+                }
+            }
+            Ok(Intent::Restart(port)) => {
+                status = restart(core, &mut config, port);
+                // Only a port the core could bind is saved, so the next start does not fail.
+                if config.listen_port == port
+                    && let Some(ui) = &ui
+                {
+                    let _ = ui.upgrade_in_event_loop(move |ui| {
+                        ui.global::<App>().invoke_port_applied(port.into());
                     });
                 }
             }
@@ -578,6 +637,57 @@ fn controller(
     }
 }
 
+/// Restarts the core on `port`. If the port cannot be bound, the previous port is restored so
+/// syncing continues; the returned status explains what happened.
+fn restart(core: &mut CoreHandle, config: &mut CoreConfig, port: u16) -> Status {
+    let previous = config.listen_port;
+    // The identity lock must be released before the new core takes it.
+    core.stop();
+    config.listen_port = port;
+    match CoreHandle::start(config.clone()) {
+        Ok(new) => {
+            *core = new;
+            Status {
+                kind: StatusKind::Listening,
+                detail: core.listen_port().to_string(),
+            }
+        }
+        Err(error) => {
+            config.listen_port = previous;
+            let message = format!(
+                "{} {port}: {error:#}",
+                t("Unable to listen on port", "无法监听端口")
+            );
+            match CoreHandle::start(config.clone()) {
+                Ok(new) => *core = new,
+                Err(again) => return Status::error(format!("{message}; {again:#}")),
+            }
+            Status::error(message)
+        }
+    }
+}
+
+/// Combines the dialog's address and port fields. An address that already carries a port
+/// (`1.2.3.4:5`, `[2001:db8::1]:5`) wins; bare IPv6 gets the brackets a port requires. The core
+/// parses and validates the result. Same rule as `withPort` in Android's AddDeviceDialog.kt.
+fn with_port(host: &str, port: &str) -> String {
+    if port.is_empty() {
+        return host.to_owned();
+    }
+    if host.starts_with('[') {
+        return if host.ends_with(']') {
+            format!("{host}:{port}")
+        } else {
+            host.to_owned()
+        };
+    }
+    match host.matches(':').count() {
+        0 => format!("{host}:{port}"),
+        1 => host.to_owned(),
+        _ => format!("[{host}]:{port}"),
+    }
+}
+
 fn group_name(id: &str, name: &str) -> String {
     if id == DEFAULT_GROUP_ID {
         t("Default", "默认").into()
@@ -597,6 +707,15 @@ fn update_ui(ui: &MainWindow, snapshot: Snapshot, status: &Status, paused: bool)
         return;
     }
     app.set_identity(snapshot.device_id.clone().into());
+    app.set_listen_port(snapshot.listen_port.into());
+    let addresses = snapshot
+        .addresses
+        .iter()
+        .map(slint::SharedString::from)
+        .collect::<Vec<_>>();
+    if !same_rows(&app.get_local_addresses(), &addresses) {
+        app.set_local_addresses(ModelRc::new(VecModel::from(addresses)));
+    }
     app.set_local_name(snapshot.device_name.clone().into());
     app.set_connected_count(
         snapshot
@@ -738,7 +857,8 @@ fn arguments() -> Result<(CoreConfig, bool)> {
         storage_dir: data.join("lava-connect"),
         device_name: std::env::var("HOSTNAME").unwrap_or_else(|_| "Lava Desktop".into()),
         platform: "linux".into(),
-        listen_port: 0,
+        // Saved in Settings; `--port` overrides it for this run only.
+        listen_port: UiSettings::load().listen_port,
         storage_key: None,
         discovery: true,
     };
@@ -759,10 +879,34 @@ fn arguments() -> Result<(CoreConfig, bool)> {
                 println!(
                     "lava-connect [--headless] [--name NAME] [--data-dir PATH] [--port PORT] [--no-discovery]"
                 );
+                println!(
+                    "  --port PORT  UDP port to listen on (default {DEFAULT_PORT}, or the one saved in Settings; 0 = random)"
+                );
                 std::process::exit(0);
             }
             _ => bail!("unknown argument: {arg}"),
         }
     }
     Ok((config, headless))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_port;
+
+    #[test]
+    fn address_and_port_fields_combine_for_ipv4_and_ipv6() {
+        for (host, port, expected) in [
+            ("192.168.1.20", "45893", "192.168.1.20:45893"),
+            ("192.168.1.20:5000", "45893", "192.168.1.20:5000"),
+            ("192.168.1.20", "", "192.168.1.20"),
+            ("2001:db8::1", "45893", "[2001:db8::1]:45893"),
+            ("fe80::1%wlan0", "45893", "[fe80::1%wlan0]:45893"),
+            ("[2001:db8::1]", "45893", "[2001:db8::1]:45893"),
+            ("[2001:db8::1]:5000", "45893", "[2001:db8::1]:5000"),
+            ("2001:db8::1", "", "2001:db8::1"),
+        ] {
+            assert_eq!(with_port(host, port), expected, "{host} + {port}");
+        }
+    }
 }

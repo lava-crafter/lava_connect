@@ -215,6 +215,10 @@ export component MainWindow inherits Window {
             if (send-input.text == "") { return; }
             App.send-text(send-input.text);
             send-input.text = "";
+        } else if (App.dialog == DialogKind.add-device) {
+            if (add-ip.text == "") { return; }
+            App.add-device(add-ip.text, add-port.text);
+            add-ip.text = "";
         }
         close-dialog();
     }
@@ -234,6 +238,9 @@ export component MainWindow inherits Window {
             join-code.focus();
         } else if (current-dialog == DialogKind.send-text) {
             send-input.focus();
+        } else if (current-dialog == DialogKind.add-device) {
+            add-port.text = App.default-port;
+            add-ip.focus();
         } else {
             keys.focus();
         }
@@ -336,6 +343,13 @@ export component MainWindow inherits Window {
                             App.filter-text = text;
                             App.filter-changed(text);
                         }
+                    }
+                    if App.page == Page.devices: Button {
+                        text: root.compact ? "" : @tr("Add device");
+                        accessible-label: @tr("Add device");
+                        icon: Icons.add;
+                        kind: ButtonKind.outlined;
+                        clicked => { open-dialog(DialogKind.add-device); }
                     }
                     if App.page == Page.devices: Button {
                         text: root.compact ? "" : @tr("Send text");
@@ -487,6 +501,49 @@ export component MainWindow inherits Window {
             send-input := TextField {
                 placeholder: @tr("Text to send");
                 accepted => { confirm-dialog(); }
+            }
+        }
+        Dialog {
+            visible: App.dialog == DialogKind.add-device;
+            title: @tr("Add device by IP address");
+            confirm-label: @tr("Connect");
+            dismiss-label: @tr("Cancel");
+            confirm-enabled: add-ip.text != "" && (add-port.text == "" || App.valid-port(add-port.text));
+            confirm => { confirm-dialog(); }
+            dismiss => { close-dialog(); }
+            Text {
+                text: @tr("Use this when the device does not appear automatically. Both devices still have to confirm the pairing code.");
+                color: Theme.c.on-surface;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: Theme.space-sm;
+                add-ip := TextField {
+                    horizontal-stretch: 1;
+                    placeholder: @tr("IPv4 or IPv6 address, e.g. 192.168.1.20");
+                    monospace: true;
+                    accepted => { confirm-dialog(); }
+                }
+                add-port := TextField {
+                    width: 96px;
+                    placeholder: @tr("Port");
+                    monospace: true;
+                    accepted => { confirm-dialog(); }
+                }
+            }
+            Text {
+                text: @tr("A link-local IPv6 address needs its interface, e.g. fe80::1%wlan0.");
+                color: Theme.c.on-surface-variant;
+                font-size: Theme.body-small;
+                wrap: word-wrap;
+            }
+            Text {
+                text: App.local-addresses.length == 0
+                    ? @tr("This device has no network address yet.")
+                    : @tr("To add this device from the other one, enter {}", App.local-addresses[0]);
+                color: Theme.c.on-surface-variant;
+                font-size: Theme.body-small;
+                wrap: word-wrap;
             }
         }
     }
