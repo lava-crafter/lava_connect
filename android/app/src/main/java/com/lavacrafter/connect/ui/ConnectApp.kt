@@ -61,6 +61,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lavacrafter.connect.ConnectViewModel
+import com.lavacrafter.connect.ConnectionPreferences
 import com.lavacrafter.connect.R
 import com.lavacrafter.connect.ui.adaptive.LavaNavigationLayout
 import com.lavacrafter.connect.ui.adaptive.LavaWindowClass
@@ -101,6 +102,7 @@ internal fun ConnectApp(vm: ConnectViewModel = viewModel()) {
     val context = LocalContext.current
     val activity = LocalActivity.current
     val appearance by remember { AppearancePreferences.state(context) }.collectAsState()
+    val listenPort by remember { ConnectionPreferences.port(context) }.collectAsState()
     val windowClass = activity?.let { calculateLavaWindowClass(it) } ?: LavaWindowClass.Compact
     var destination by rememberSaveable { mutableStateOf(Destination.DEVICES) }
     var selectedDeviceId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -275,6 +277,7 @@ internal fun ConnectApp(vm: ConnectViewModel = viewModel()) {
                                 onCapability = { id, capability, enabled -> vm.command("set_capability", id, capability, enabled) },
                                 onGroupMember = { id, enabled -> vm.setGroupMember(state.activeGroupId, id, enabled) },
                                 onCopy = copier::copy,
+                                onAddDevice = vm::addDevice,
                             )
                         }
 
@@ -295,6 +298,8 @@ internal fun ConnectApp(vm: ConnectViewModel = viewModel()) {
                             SettingsScreen(
                                 state = state,
                                 appearance = appearance,
+                                portSetting = listenPort,
+                                onPort = vm::setPort,
                                 nativeGreeting = nativeGreeting,
                                 onAppearance = { transform -> AppearancePreferences.update(context, transform) },
                                 onStart = start,

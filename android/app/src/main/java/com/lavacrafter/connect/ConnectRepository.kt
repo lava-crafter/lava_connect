@@ -89,6 +89,8 @@ class ConnectRepository(
 
     fun updateBackgroundRead() = service?.updateBackgroundRead()
 
+    fun restart() = service?.restartCore()
+
     fun greeting() =
         com.lavacrafter.connect.nativecore.NativeCore
             .greeting()

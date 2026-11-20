@@ -101,6 +101,24 @@ class ConnectViewModel(
 
     fun receivedImage() = repository.receivedImage()
 
+    /** Connects to `ip` or `ip:port` and starts pairing; the core reports failures as errors. */
+    fun addDevice(address: String) =
+        runCatching {
+            repository.command(
+                org.json
+                    .JSONObject()
+                    .put("type", "add_address")
+                    .put("address", address),
+            )
+        }.onFailure { showError(it.message ?: "Unable to add device") }
+
+    /** Saves the listening port and, if the service runs, restarts it on that port. */
+    fun setPort(port: Int) =
+        runCatching {
+            ConnectionPreferences.setPort(getApplication(), port)
+            if (_state.value.running) repository.restart()
+        }.onFailure { showError(it.message ?: "Unable to change port") }
+
     fun updateBackgroundRead() = repository.updateBackgroundRead()
 
     fun confirmPair(

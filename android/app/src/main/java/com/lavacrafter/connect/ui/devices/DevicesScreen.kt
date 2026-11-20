@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LinkOff
@@ -74,8 +75,11 @@ internal fun DevicesScreen(
     onCapability: (String, Int, Boolean) -> Unit,
     onGroupMember: (String, Boolean) -> Unit,
     onCopy: (String) -> Unit,
+    onAddDevice: (String) -> Unit,
 ) {
     var pairingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var addOpen by rememberSaveable { mutableStateOf(false) }
+    val localAddresses = state.addresses
     val selected = state.devices.firstOrNull { it.id == selectedDeviceId }
     val twoPane = windowClass.width == LavaWindowWidthClass.EXPANDED
     val detail: @Composable (DeviceInfo) -> Unit = { device ->
@@ -107,6 +111,8 @@ internal fun DevicesScreen(
             onCancelPair = onCancelPair,
             onUnpair = onUnpair,
             onCopy = onCopy,
+            onAddDevice = { addOpen = true },
+            localAddresses = localAddresses,
         )
     }
 
@@ -147,6 +153,17 @@ internal fun DevicesScreen(
             },
         )
     }
+
+    if (addOpen && state.running) {
+        AddDeviceDialog(
+            localAddresses = localAddresses,
+            onDismiss = { addOpen = false },
+            onAdd = {
+                onAddDevice(it)
+                addOpen = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -163,9 +180,19 @@ private fun DeviceList(
     onCancelPair: (String) -> Unit,
     onUnpair: (String) -> Unit,
     onCopy: (String) -> Unit,
+    onAddDevice: () -> Unit,
+    localAddresses: List<String>,
 ) {
     Column(modifier) {
-        PaneTitle(stringResource(R.string.nav_devices))
+        PaneTitle(stringResource(R.string.nav_devices)) {
+            if (state.running) {
+                FilledTonalButton(onClick = onAddDevice, shape = MaterialTheme.shapes.small) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(LavaSpacing.small))
+                    Text(stringResource(R.string.devices_add))
+                }
+            }
+        }
         DeviceListItems(
             state,
             selectedId,
@@ -178,6 +205,8 @@ private fun DeviceList(
             onCancelPair,
             onUnpair,
             onCopy,
+            onAddDevice,
+            localAddresses,
         )
     }
 }
@@ -195,6 +224,8 @@ private fun DeviceListItems(
     onCancelPair: (String) -> Unit,
     onUnpair: (String) -> Unit,
     onCopy: (String) -> Unit,
+    onAddDevice: () -> Unit,
+    localAddresses: List<String>,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -202,7 +233,7 @@ private fun DeviceListItems(
         contentPadding = PaddingValues(start = LavaSpacing.large, end = LavaSpacing.large, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(LavaSpacing.medium),
     ) {
-        item { LocalDeviceCard(state, onStart, onStop, onCopy) }
+        item { LocalDeviceCard(state, localAddresses, onStart, onStop, onCopy) }
         if (state.imageAvailable) {
             item { ReceivedImageCard(onShareImage) }
         }
@@ -213,8 +244,8 @@ private fun DeviceListItems(
                     description =
                         stringResource(if (state.running) R.string.devices_empty_running else R.string.devices_empty_stopped),
                     icon = Icons.Filled.WifiFind,
-                    actionLabel = if (state.running) null else stringResource(R.string.local_start),
-                    onAction = if (state.running) null else onStart,
+                    actionLabel = stringResource(if (state.running) R.string.devices_add else R.string.local_start),
+                    onAction = if (state.running) onAddDevice else onStart,
                 )
             }
         }
@@ -236,6 +267,7 @@ private fun DeviceListItems(
 @Composable
 private fun LocalDeviceCard(
     state: ConnectState,
+    localAddresses: List<String>,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onCopy: (String) -> Unit,
@@ -269,6 +301,17 @@ private fun LocalDeviceCard(
                 copyLabel = stringResource(R.string.device_copy_id),
                 onCopy = onCopy,
             )
+        }
+        if (state.running) {
+            localAddresses.forEach { address ->
+                Spacer(Modifier.height(LavaSpacing.small))
+                CopyableId(
+                    label = stringResource(R.string.device_address),
+                    value = address,
+                    copyLabel = stringResource(R.string.device_address),
+                    onCopy = onCopy,
+                )
+            }
         }
         Spacer(Modifier.height(LavaSpacing.small))
         Text(

@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
@@ -28,11 +31,14 @@ import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RoundedCorner
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -49,10 +55,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.lavacrafter.connect.BackgroundRead
 import com.lavacrafter.connect.BuildConfig
 import com.lavacrafter.connect.ConnectState
+import com.lavacrafter.connect.ConnectionPreferences
 import com.lavacrafter.connect.R
 import com.lavacrafter.connect.ui.ACCENT_PRESETS
 import com.lavacrafter.connect.ui.Appearance
@@ -93,6 +101,8 @@ private val accentLabels =
 internal fun SettingsScreen(
     state: ConnectState,
     appearance: Appearance,
+    portSetting: Int,
+    onPort: (Int) -> Unit,
     nativeGreeting: String,
     onAppearance: ((Appearance) -> Appearance) -> Unit,
     onStart: () -> Unit,
@@ -114,6 +124,7 @@ internal fun SettingsScreen(
                         checked = state.running,
                         onCheckedChange = { if (it) onStart() else onStop() },
                     )
+                    PortSetting(portSetting, if (state.running) state.listenPort else 0, onPort)
                 }
             }
 
@@ -280,6 +291,52 @@ private fun ChoiceItem(
         }
         Spacer(Modifier.size(LavaSpacing.medium))
         control()
+    }
+}
+
+/** Listening port; `listening` is the port the running core is bound to, or 0 when stopped. */
+@Composable
+private fun PortSetting(
+    saved: Int,
+    listening: Int,
+    onApply: (Int) -> Unit,
+) {
+    val text = rememberTextFieldState(saved.toString())
+    val port =
+        text.text
+            .toString()
+            .trim()
+            .toIntOrNull()
+    val valid = port != null && ConnectionPreferences.validPort(port)
+    ChoiceItem(
+        title = stringResource(R.string.settings_port),
+        description = stringResource(R.string.settings_port_description),
+        icon = Icons.Filled.Lan,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LavaSpacing.small)) {
+            OutlinedTextField(
+                state = text,
+                modifier = Modifier.width(128.dp),
+                label = { Text(stringResource(R.string.add_device_port)) },
+                isError = !valid,
+                supportingText = if (valid) null else ({ Text(stringResource(R.string.settings_port_invalid)) }),
+                lineLimits = TextFieldLineLimits.SingleLine,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            FilledTonalButton(
+                onClick = { port?.let(onApply) },
+                enabled = valid && port != saved,
+                shape = MaterialTheme.shapes.small,
+            ) { Text(stringResource(R.string.settings_port_apply)) }
+        }
+        if (listening > 0) {
+            Spacer(Modifier.size(LavaSpacing.small))
+            Text(
+                stringResource(R.string.settings_port_current, listening),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
