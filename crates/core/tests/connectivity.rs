@@ -356,6 +356,51 @@ fn peers_that_saved_each_others_address_keep_one_session() {
 }
 
 #[test]
+fn re_pairing_by_address_after_one_side_forgot_keeps_the_session_and_address() {
+    // Swapping who forgets covers both orders of the lower-device-ID rule.
+    for swap in [false, true] {
+        let dir = test_directory();
+        let (a_path, b_path) = (dir.path().join("a"), dir.path().join("b"));
+        let a = CoreHandle::start(config(&a_path, "Desktop")).unwrap();
+        let b = CoreHandle::start(config(&b_path, "Phone")).unwrap();
+        let (keeper, forgetter, forgetter_path) = if swap {
+            (&b, &a, &a_path)
+        } else {
+            (&a, &b, &b_path)
+        };
+        // `keeper` saves `forgetter`'s address, so it keeps redialing after being forgotten.
+        pair_by_address(keeper, forgetter);
+        forgetter
+            .command(Command::Unpair {
+                device_id: device_id(keeper),
+            })
+            .unwrap();
+        // The keeper reconnects by its saved address; the forgetter sees an untrusted peer.
+        wait(|| {
+            forgetter
+                .snapshot()
+                .devices
+                .iter()
+                .any(|d| d.id == device_id(keeper) && !d.trusted)
+        });
+        // Entering the keeper's address opens a second connection to an already connected
+        // peer. Both sides must keep the same one and pairing must finish over it.
+        pair_at(forgetter, keeper, local_address(keeper));
+        assert_eq!(
+            saved_address(forgetter_path, &device_id(keeper)),
+            Some(local_address(keeper)),
+            "the entered address must be saved even though pairing reused the old session"
+        );
+        thread::sleep(Duration::from_secs(4));
+        assert!(connected(keeper) && connected(forgetter));
+        keeper.drain_events();
+        forgetter.drain_events();
+        clipboard(keeper, "text/plain", b"re-paired");
+        receive(forgetter, "text/plain", b"re-paired");
+    }
+}
+
+#[test]
 fn ipv6_address_pairs_and_reconnects_on_the_same_port() {
     if std::net::UdpSocket::bind("[::1]:0").is_err() {
         eprintln!("skipped: IPv6 loopback unavailable");

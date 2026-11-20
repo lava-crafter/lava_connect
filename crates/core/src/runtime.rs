@@ -29,6 +29,8 @@ const MAX_PEERS: usize = 16;
 /// Wait before redialing a peer known only by its saved address, so an offline peer is not
 /// probed continuously.
 const ADDRESS_RETRY: Duration = Duration::from_secs(10);
+/// How often this device's own addresses are re-read for display.
+const ADDRESS_REFRESH: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct CoreConfig {
@@ -221,9 +223,9 @@ enum NetworkEvent {
     DialFailed {
         id: String,
     },
-    ManualDialDone {
+    ManualDialFailed {
         address: SocketAddr,
-        error: Option<String>,
+        error: String,
     },
 }
 
@@ -250,6 +252,7 @@ struct Actor {
     mdns_rx: Option<mdns_sd::Receiver<ServiceEvent>>,
     service_name: Option<String>,
     addresses: Vec<String>,
+    addresses_checked: Instant,
     /// The endpoint is dual-stack and can reach IPv6 peers.
     ipv6: bool,
 }
@@ -297,6 +300,7 @@ impl Actor {
             mdns_rx: None,
             service_name: None,
             addresses: local_addresses(local.port(), ipv6),
+            addresses_checked: Instant::now(),
             ipv6,
         };
         if actor.config.discovery {
@@ -459,7 +463,7 @@ impl Actor {
             return Ok(());
         }
         ensure!(
-            self.sessions.len() + self.dialing.len() < MAX_PEERS,
+            self.sessions.len() + self.dialing.len() + self.manual_dialing.len() < MAX_PEERS,
             "too many connections"
         );
         // mDNS is preferred; a saved manual address covers networks without multicast.
@@ -489,10 +493,12 @@ impl Actor {
                 .await
             }
             .await;
+            // A session that was established ends with Ok and its Session event already
+            // cleared `dialing`; reporting it here would clobber a newer dial to the same peer.
             if let Err(error) = result {
-                tracing::debug!(%error, "outgoing session ended");
+                tracing::debug!(%error, "outgoing connection failed");
+                let _ = tx.send(NetworkEvent::DialFailed { id: expected }).await;
             }
-            let _ = tx.send(NetworkEvent::DialFailed { id: expected }).await;
         });
         self.refresh();
         Ok(())
@@ -524,10 +530,13 @@ impl Actor {
                 serve_connection(connection, hello, None, true, Some(address), tx.clone()).await
             }
             .await;
-            let error = result.err().map(|error| format!("{error:#}"));
-            let _ = tx
-                .send(NetworkEvent::ManualDialDone { address, error })
-                .await;
+            // On success the Session event already cleared `manual_dialing`.
+            if let Err(error) = result {
+                let error = format!("{error:#}");
+                let _ = tx
+                    .send(NetworkEvent::ManualDialFailed { address, error })
+                    .await;
+            }
         });
         Ok(())
     }
@@ -877,7 +886,10 @@ impl Actor {
                 if let Some(existing) = self.sessions.get(&id) {
                     // Both peers may dial each other (e.g. both saved the other's address).
                     // Both sides keep the connection opened by the lower device ID, so they
-                    // converge on the same one. Never replace an active pairing.
+                    // converge on the same one. The rule must not depend on local state such
+                    // as trust, which the two sides can see differently (one side forgot the
+                    // other): each would then close a different connection and drop both.
+                    // Never replace an active pairing.
                     let preferred = self.id.as_str().min(id.as_str());
                     let initiator = |s: &Session| {
                         if s.outgoing {
@@ -886,17 +898,22 @@ impl Actor {
                             id.as_str()
                         }
                     };
-                    let replace = trusted
-                        && !existing.pairing
+                    let replace = !existing.pairing
                         && initiator(&session) == preferred
                         && initiator(existing) != preferred;
                     if !replace {
                         session.close_soon();
                         // The user entered the address of a device that is already connected:
-                        // keep the address for a trusted peer, or pair over the existing session.
+                        // keep the address for a trusted peer, or pair over the existing session
+                        // and save the address once pairing completes.
                         match manual {
                             Some(address) if trusted => self.remember_address(&id, address)?,
-                            Some(_) => self.begin_pair(&id)?,
+                            Some(address) => {
+                                if let Some(existing) = self.sessions.get_mut(&id) {
+                                    existing.manual_address = Some(address);
+                                }
+                                self.begin_pair(&id)?;
+                            }
                             None => {}
                         }
                         self.refresh();
@@ -1056,18 +1073,20 @@ impl Actor {
                     self.retry_after.insert(id, Instant::now() + ADDRESS_RETRY);
                 }
             }
-            NetworkEvent::ManualDialDone { address, error } => {
+            NetworkEvent::ManualDialFailed { address, error } => {
                 self.manual_dialing.remove(&address);
-                if let Some(error) = error {
-                    self.error(format!("Unable to connect to {address}: {error}"));
-                }
+                self.error(format!("Unable to connect to {address}: {error}"));
             }
         }
         self.refresh();
         Ok(())
     }
     fn tick(&mut self) {
-        self.addresses = local_addresses(self.snapshot.lock().unwrap().listen_port, self.ipv6);
+        // Interface addresses rarely change; enumerating them every tick wastes battery.
+        if self.addresses_checked.elapsed() >= ADDRESS_REFRESH {
+            self.addresses_checked = Instant::now();
+            self.addresses = local_addresses(self.snapshot.lock().unwrap().listen_port, self.ipv6);
+        }
         if let Some(rx) = &self.mdns_rx {
             for _ in 0..64 {
                 let Ok(event) = rx.try_recv() else {
@@ -1175,6 +1194,11 @@ impl Actor {
         for id in reconnect {
             if let Err(error) = self.dial(&id) {
                 tracing::debug!(%error, "reconnect deferred");
+                // A saved address that cannot be dialed at all (e.g. IPv6 after the endpoint
+                // fell back to IPv4 only) fails before any DialFailed; back off the same way.
+                if !self.advertisements.contains_key(&id) {
+                    self.retry_after.insert(id, now + ADDRESS_RETRY);
+                }
             }
         }
         self.refresh();
