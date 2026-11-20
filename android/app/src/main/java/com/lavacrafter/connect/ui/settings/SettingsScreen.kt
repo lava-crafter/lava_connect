@@ -325,7 +325,9 @@ private fun PortSetting(
             )
             FilledTonalButton(
                 onClick = { port?.let(onApply) },
-                enabled = valid && port != saved,
+                // Also enabled for the saved port while the core runs on another one (it was
+                // busy at start), so the user can retry it.
+                enabled = valid && (port != saved || (saved != 0 && listening > 0 && listening != saved)),
                 shape = MaterialTheme.shapes.small,
             ) { Text(stringResource(R.string.settings_port_apply)) }
         }
