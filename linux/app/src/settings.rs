@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Window and appearance preferences, kept separate from the core's identity store.
+//! Window, appearance and connection preferences, kept separate from the core's identity store.
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -13,6 +13,8 @@ pub struct UiSettings {
     pub page: i32,
     pub width: u32,
     pub height: u32,
+    /// UDP port for the connection service; 0 picks a random port. `--port` overrides it.
+    pub listen_port: u16,
 }
 
 impl Default for UiSettings {
@@ -24,6 +26,7 @@ impl Default for UiSettings {
             page: 0,
             width: 960,
             height: 640,
+            listen_port: lava_core::DEFAULT_PORT,
         }
     }
 }

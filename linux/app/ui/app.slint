@@ -18,7 +18,7 @@ export struct GroupRow { id: string, name: string, members: int }
 
 export enum Page { devices, groups, settings }
 
-export enum DialogKind { none, confirm-pairing, unpair, create-group, join-group, delete-group, send-text }
+export enum DialogKind { none, confirm-pairing, unpair, create-group, join-group, delete-group, send-text, add-device }
 
 export global App {
     in property <string> identity;
@@ -29,6 +29,12 @@ export global App {
     // StatusKind in src/main.rs; the text is localized in status-text().
     in property <int> status-kind;
     in property <string> status-detail;
+    // UDP port the core is bound to, this device's "ip:port" addresses, the saved port setting
+    // (0 = random) and the port pre-filled when adding a device by address.
+    in property <int> listen-port;
+    in property <[string]> local-addresses;
+    in property <int> port-setting;
+    in property <int> default-port;
 
     // Devices page list, narrowed by filter-text.
     in property <[DeviceRow]> devices;
@@ -61,6 +67,9 @@ export global App {
     callback send-text(string);
     callback toggle-pause();
     callback copy(string);
+    callback add-device(string /* IP or IP:port */, string /* port */);
+    // Saves the port and restarts the core on it.
+    callback set-port(string);
     callback filter-changed(string);
     callback appearance-changed();
     callback page-changed();
@@ -71,6 +80,20 @@ export global App {
     /// known session ("connecting") and an advertisement it still has to dial ("available").
     public pure function can-pair(device: DeviceRow) -> bool {
         return !device.trusted && device.code == "";
+    }
+
+    /// 0 (random) or 1024–65535; lower ports need root on Linux and are refused on Android.
+    public pure function valid-port(text: string) -> bool {
+        if (!text.is-float()) { return false; }
+        let port = text.to-float();
+        return port == Math.round(port) && (port == 0 || (port >= 1024 && port <= 65535));
+    }
+
+    /// Port of another device: 1–65535, same rule as the core and Android's AddDeviceDialog.
+    public pure function valid-peer-port(text: string) -> bool {
+        if (!text.is-float()) { return false; }
+        let port = text.to-float();
+        return port == Math.round(port) && port >= 1 && port <= 65535;
     }
 
     public pure function state-label(state: string) -> string {
@@ -90,6 +113,7 @@ export global App {
         if (kind == 5) { return @tr("Resume clipboard sync first"); }
         if (kind == 6) { return @tr("Copied"); }
         if (kind == 7) { return @tr("Sent"); }
+        if (kind == 8) { return @tr("Listening on UDP port {}", detail); }
         return @tr("Looking for devices on the local network…");
     }
 }

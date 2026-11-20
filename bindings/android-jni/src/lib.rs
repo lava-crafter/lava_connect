@@ -5,7 +5,7 @@ use jni::{
     Env, EnvUnowned,
     errors::ErrorPolicy,
     objects::{JClass, JString},
-    sys::{jlong, jstring},
+    sys::{jint, jlong, jstring},
 };
 use lava_core::{Command, CoreConfig, CoreEvent, CoreHandle};
 use std::{
@@ -93,6 +93,7 @@ pub extern "system" fn Java_com_lavacrafter_connect_nativecore_NativeCore_create
     dir: JString<'local>,
     name: JString<'local>,
     key: JString<'local>,
+    port: jint,
 ) -> jlong {
     unowned
         .with_env(|env| -> anyhow::Result<jlong> {
@@ -100,7 +101,8 @@ pub extern "system" fn Java_com_lavacrafter_connect_nativecore_NativeCore_create
                 storage_dir: PathBuf::from(string(env, dir)?),
                 device_name: string(env, name)?,
                 platform: "android".into(),
-                listen_port: 0,
+                listen_port: u16::try_from(port)
+                    .map_err(|_| anyhow::anyhow!("listen port must be 0–65535"))?,
                 storage_key: Some(string(env, key)?),
                 discovery: true,
             };

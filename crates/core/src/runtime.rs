@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::{
-    ClipboardGroup, Command, CoreEvent, DEFAULT_GROUP_ID, Device, Snapshot,
+    ClipboardGroup, Command, CoreEvent, DEFAULT_GROUP_ID, DEFAULT_PORT, Device, Snapshot,
     identity::{
         Identity, PersistenceFailure, TrustStore, TrustedDevice, fingerprint, validate_group_id,
         validate_group_name,
@@ -9,11 +9,11 @@ use crate::{
 };
 use anyhow::{Context, Result, bail, ensure};
 use lava_protocol::{self as proto, Message, envelope::Body};
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{ScopedIp, ServiceDaemon, ServiceEvent, ServiceInfo};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
-    net::SocketAddr,
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    net::{IpAddr, SocketAddr, SocketAddrV6},
     path::PathBuf,
     sync::{Arc, Mutex, mpsc},
     thread,
@@ -26,7 +26,13 @@ use tokio::{
 
 const SERVICE_TYPE: &str = "_lava-connect._udp.local.";
 const MAX_PEERS: usize = 16;
+/// Wait before redialing a peer known only by its saved address, so an offline peer is not
+/// probed continuously.
+const ADDRESS_RETRY: Duration = Duration::from_secs(10);
+/// How often this device's own addresses are re-read for display.
+const ADDRESS_REFRESH: Duration = Duration::from_secs(30);
 
+#[derive(Clone)]
 pub struct CoreConfig {
     pub storage_dir: PathBuf,
     pub device_name: String,
@@ -180,6 +186,10 @@ struct Session {
     remote_groups: Vec<String>,
     remote_groups_supported: bool,
     started: Instant,
+    /// True when this device opened the connection.
+    outgoing: bool,
+    /// Address the user entered, for connections started with `Command::AddAddress`.
+    manual_address: Option<SocketAddr>,
 }
 impl Session {
     fn send(&self, body: Body) -> Result<()> {
@@ -189,6 +199,14 @@ impl Session {
     }
     fn close(&self) {
         self.connection.close(0u8.into(), b"session closed");
+    }
+    /// Closes a duplicate connection after the peer has had time to finish its handshake;
+    /// closing at once discards our buffered Hello and the peer would report a failure.
+    fn close_soon(self: Box<Self>) {
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            self.close();
+        });
     }
 }
 enum NetworkEvent {
@@ -205,6 +223,10 @@ enum NetworkEvent {
     DialFailed {
         id: String,
     },
+    ManualDialFailed {
+        address: SocketAddr,
+        error: String,
+    },
 }
 
 struct Actor {
@@ -216,6 +238,8 @@ struct Actor {
     advertisements: BTreeMap<String, Advertisement>,
     sessions: BTreeMap<String, Session>,
     dialing: HashSet<String>,
+    manual_dialing: HashSet<SocketAddr>,
+    retry_after: HashMap<String, Instant>,
     pending_pair: HashSet<String>,
     // Bounded history covers both received clipboard IDs and local watcher echoes.
     hashes: VecDeque<(Vec<u8>, Instant)>,
@@ -227,6 +251,10 @@ struct Actor {
     mdns: Option<ServiceDaemon>,
     mdns_rx: Option<mdns_sd::Receiver<ServiceEvent>>,
     service_name: Option<String>,
+    addresses: Vec<String>,
+    addresses_checked: Instant,
+    /// The endpoint is dual-stack and can reach IPv6 peers.
+    ipv6: bool,
 }
 
 impl Actor {
@@ -248,6 +276,8 @@ impl Actor {
             protocol_version: proto::PROTOCOL_VERSION,
         };
         let (network_tx, network_rx) = async_mpsc::channel(32);
+        let local = endpoint.local_addr()?;
+        let ipv6 = local.is_ipv6();
         let mut actor = Self {
             config,
             id,
@@ -257,6 +287,8 @@ impl Actor {
             advertisements: BTreeMap::new(),
             sessions: BTreeMap::new(),
             dialing: HashSet::new(),
+            manual_dialing: HashSet::new(),
+            retry_after: HashMap::new(),
             pending_pair: HashSet::new(),
             hashes: VecDeque::new(),
             ids: VecDeque::new(),
@@ -267,6 +299,9 @@ impl Actor {
             mdns: None,
             mdns_rx: None,
             service_name: None,
+            addresses: local_addresses(local.port(), ipv6),
+            addresses_checked: Instant::now(),
+            ipv6,
         };
         if actor.config.discovery {
             let mdns = ServiceDaemon::new()?;
@@ -291,7 +326,11 @@ impl Actor {
             actor.mdns_rx = Some(mdns.browse(SERVICE_TYPE)?);
             actor.mdns = Some(mdns);
         }
-        actor.snapshot.lock().unwrap().running = true;
+        {
+            let mut snapshot = actor.snapshot.lock().unwrap();
+            snapshot.running = true;
+            snapshot.listen_port = actor.endpoint.local_addr()?.port();
+        }
         actor.refresh();
         Ok(actor)
     }
@@ -313,7 +352,7 @@ impl Actor {
                         tokio::spawn(async move {
                             let _permit = permit;
                             if let Ok(Ok(connection)) = tokio::time::timeout(Duration::from_secs(10), incoming).await
-                                && let Err(error) = serve_connection(connection, hello, None, false, tx).await { tracing::debug!(%error, "incoming session ended"); }
+                                && let Err(error) = serve_connection(connection, hello, None, false, None, tx).await { tracing::debug!(%error, "incoming session ended"); }
                         });
                     } else { incoming.refuse(); }
                 },
@@ -410,7 +449,9 @@ impl Actor {
         if snapshot.devices != devices
             || snapshot.groups != self.trust.groups
             || snapshot.active_group_id != self.trust.active_group_id
+            || snapshot.addresses != self.addresses
         {
+            snapshot.addresses = self.addresses.clone();
             snapshot.devices = devices;
             snapshot.groups = self.trust.groups.clone();
             snapshot.active_group_id = self.trust.active_group_id.clone();
@@ -422,13 +463,15 @@ impl Actor {
             return Ok(());
         }
         ensure!(
-            self.sessions.len() + self.dialing.len() < MAX_PEERS,
+            self.sessions.len() + self.dialing.len() + self.manual_dialing.len() < MAX_PEERS,
             "too many connections"
         );
-        let address = *self
+        // mDNS is preferred; a saved manual address covers networks without multicast.
+        let address = self
             .advertisements
             .get(id)
-            .and_then(|a| a.addresses.first())
+            .and_then(|a| a.addresses.first().copied())
+            .or_else(|| self.trust.devices.get(id).and_then(|t| t.address))
             .context("device is not currently available")?;
         let connecting = self.endpoint.connect(address, "lava-connect.local")?;
         self.dialing.insert(id.into());
@@ -439,15 +482,78 @@ impl Actor {
             let result = async {
                 let connection =
                     tokio::time::timeout(Duration::from_secs(10), connecting).await??;
-                serve_connection(connection, hello, Some(expected.clone()), true, tx.clone()).await
+                serve_connection(
+                    connection,
+                    hello,
+                    Some(expected.clone()),
+                    true,
+                    None,
+                    tx.clone(),
+                )
+                .await
             }
             .await;
+            // A session that was established ends with Ok and its Session event already
+            // cleared `dialing`; reporting it here would clobber a newer dial to the same peer.
             if let Err(error) = result {
-                tracing::debug!(%error, "outgoing session ended");
+                tracing::debug!(%error, "outgoing connection failed");
+                let _ = tx.send(NetworkEvent::DialFailed { id: expected }).await;
             }
-            let _ = tx.send(NetworkEvent::DialFailed { id: expected }).await;
         });
         self.refresh();
+        Ok(())
+    }
+    /// Dials an address the user entered. The peer's ID is unknown until its TLS identity is
+    /// seen, so the connection is authenticated only by the pairing that follows.
+    fn dial_address(&mut self, address: &str) -> Result<()> {
+        let address = parse_address(address)?;
+        ensure!(
+            address.is_ipv4() || self.ipv6,
+            "IPv6 is not available on this device"
+        );
+        if self.manual_dialing.contains(&address) {
+            return Ok(());
+        }
+        ensure!(
+            self.sessions.len() + self.dialing.len() + self.manual_dialing.len() < MAX_PEERS,
+            "too many connections"
+        );
+        let connecting = self.endpoint.connect(address, "lava-connect.local")?;
+        self.manual_dialing.insert(address);
+        let hello = self.hello.clone();
+        let tx = self.network_tx.clone();
+        tokio::spawn(async move {
+            let result = async {
+                let connection = tokio::time::timeout(Duration::from_secs(10), connecting)
+                    .await
+                    .context("connection timed out")??;
+                serve_connection(connection, hello, None, true, Some(address), tx.clone()).await
+            }
+            .await;
+            // On success the Session event already cleared `manual_dialing`.
+            if let Err(error) = result {
+                let error = format!("{error:#}");
+                let _ = tx
+                    .send(NetworkEvent::ManualDialFailed { address, error })
+                    .await;
+            }
+        });
+        Ok(())
+    }
+    /// Saves the address a trusted peer was reached at, so it can be redialed after a restart.
+    fn remember_address(&mut self, id: &str, address: SocketAddr) -> Result<()> {
+        let Some(trusted) = self.trust.devices.get(id) else {
+            return Ok(());
+        };
+        if trusted.address == Some(address) {
+            return Ok(());
+        }
+        let old = self.trust.clone();
+        self.trust.devices.get_mut(id).unwrap().address = Some(address);
+        if let Err(error) = self.trust.save(&self.config.storage_dir) {
+            self.trust = old;
+            return Err(error);
+        }
         Ok(())
     }
     fn begin_pair(&mut self, id: &str) -> Result<()> {
@@ -473,6 +579,9 @@ impl Actor {
                 .get(id)
                 .map(|t| t.allowed.clone())
                 .unwrap_or_else(|| vec![1, 2]);
+            let address = session
+                .manual_address
+                .or_else(|| self.trust.devices.get(id).and_then(|t| t.address));
             let old_store = self.trust.clone();
             let new_peer = !self.trust.devices.contains_key(id);
             self.trust.devices.insert(
@@ -481,6 +590,7 @@ impl Actor {
                     name: session.info.name.clone(),
                     platform: platform_name(session.info.platform).into(),
                     allowed,
+                    address,
                 },
             );
             if new_peer {
@@ -583,6 +693,7 @@ impl Actor {
                     },
                 );
             }
+            Command::AddAddress { address } => self.dial_address(&address)?,
             Command::Pair { device_id } => {
                 if self.sessions.contains_key(&device_id) {
                     self.begin_pair(&device_id)?;
@@ -626,6 +737,7 @@ impl Actor {
                     return Err(error);
                 }
                 self.pending_pair.remove(&device_id);
+                self.retry_after.remove(&device_id);
                 if let Some(session) = self.sessions.remove(&device_id) {
                     session.close();
                 }
@@ -765,21 +877,64 @@ impl Actor {
         match event {
             NetworkEvent::Session(session) => {
                 let id = session.id.clone();
+                let manual = session.manual_address;
+                let trusted = self.trust.devices.contains_key(&id);
                 self.dialing.remove(&id);
-                if self.sessions.len() >= MAX_PEERS {
+                if let Some(address) = manual {
+                    self.manual_dialing.remove(&address);
+                }
+                if let Some(existing) = self.sessions.get(&id) {
+                    // Both peers may dial each other (e.g. both saved the other's address).
+                    // Both sides keep the connection opened by the lower device ID, so they
+                    // converge on the same one. The rule must not depend on local state such
+                    // as trust, which the two sides can see differently (one side forgot the
+                    // other): each would then close a different connection and drop both.
+                    // Never replace an active pairing.
+                    let preferred = self.id.as_str().min(id.as_str());
+                    let initiator = |s: &Session| {
+                        if s.outgoing {
+                            self.id.as_str()
+                        } else {
+                            id.as_str()
+                        }
+                    };
+                    let replace = !existing.pairing
+                        && initiator(&session) == preferred
+                        && initiator(existing) != preferred;
+                    if !replace {
+                        session.close_soon();
+                        // The user entered the address of a device that is already connected:
+                        // keep the address for a trusted peer, or pair over the existing session
+                        // and save the address once pairing completes.
+                        match manual {
+                            Some(address) if trusted => self.remember_address(&id, address)?,
+                            Some(address) => {
+                                if let Some(existing) = self.sessions.get_mut(&id) {
+                                    existing.manual_address = Some(address);
+                                }
+                                self.begin_pair(&id)?;
+                            }
+                            None => {}
+                        }
+                        self.refresh();
+                        return Ok(());
+                    }
+                    if let Some(old) = self.sessions.remove(&id) {
+                        old.close();
+                    }
+                } else if self.sessions.len() >= MAX_PEERS {
                     session.close();
                     return Ok(());
                 }
-                if self.sessions.contains_key(&id) {
-                    // Never replace an active or user-confirmed pairing with another session.
-                    session.close();
-                    return Ok(());
-                }
-                if self.trust.devices.contains_key(&id) {
+                if trusted {
+                    if let Some(address) = manual {
+                        self.remember_address(&id, address)?;
+                    }
                     session.send(Body::Ready(ready_for(&self.trust, &id)))?;
                 }
                 self.sessions.insert(id.clone(), *session);
-                if self.pending_pair.remove(&id) {
+                self.retry_after.remove(&id);
+                if self.pending_pair.remove(&id) || (manual.is_some() && !trusted) {
                     self.begin_pair(&id)?;
                 }
             }
@@ -914,12 +1069,24 @@ impl Actor {
             NetworkEvent::DialFailed { id } => {
                 self.dialing.remove(&id);
                 self.pending_pair.remove(&id);
+                if !self.advertisements.contains_key(&id) {
+                    self.retry_after.insert(id, Instant::now() + ADDRESS_RETRY);
+                }
+            }
+            NetworkEvent::ManualDialFailed { address, error } => {
+                self.manual_dialing.remove(&address);
+                self.error(format!("Unable to connect to {address}: {error}"));
             }
         }
         self.refresh();
         Ok(())
     }
     fn tick(&mut self) {
+        // Interface addresses rarely change; enumerating them every tick wastes battery.
+        if self.addresses_checked.elapsed() >= ADDRESS_REFRESH {
+            self.addresses_checked = Instant::now();
+            self.addresses = local_addresses(self.snapshot.lock().unwrap().listen_port, self.ipv6);
+        }
         if let Some(rx) = &self.mdns_rx {
             for _ in 0..64 {
                 let Ok(event) = rx.try_recv() else {
@@ -940,11 +1107,26 @@ impl Actor {
                         {
                             continue;
                         }
-                        let addresses: Vec<_> = info
+                        // IPv4 first: it is what most LANs route. IPv6 covers IPv6-only peers;
+                        // a link-local address is only usable on the interface it came from.
+                        let port = info.get_port();
+                        let mut addresses: Vec<_> = info
                             .get_addresses_v4()
                             .into_iter()
-                            .map(|ip| SocketAddr::new(ip.into(), info.get_port()))
+                            .map(|ip| SocketAddr::new(ip.into(), port))
                             .collect();
+                        if self.ipv6 {
+                            addresses.extend(info.get_addresses().iter().filter_map(|ip| {
+                                let ScopedIp::V6(v6) = ip else { return None };
+                                let ip = *v6.addr();
+                                let scope = if ip.is_unicast_link_local() {
+                                    v6.scope_id().index
+                                } else {
+                                    0
+                                };
+                                Some(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, scope)))
+                            }));
+                        }
                         if addresses.is_empty() {
                             continue;
                         }
@@ -988,16 +1170,35 @@ impl Actor {
         for session in self.sessions.values() {
             let _ = session.send(Body::Ping(proto::Ping {}));
         }
+        let now = Instant::now();
         let reconnect: Vec<_> = self
             .trust
             .devices
-            .keys()
-            .filter(|id| self.id < **id && self.advertisements.contains_key(*id))
-            .cloned()
+            .iter()
+            .filter(|(id, trusted)| {
+                if self.sessions.contains_key(*id)
+                    || self.retry_after.get(*id).is_some_and(|at| *at > now)
+                {
+                    return false;
+                }
+                // Advertised peers: only the lower ID dials, so they do not race. A peer
+                // known only by a saved address may not know ours, so always dial it.
+                if self.advertisements.contains_key(*id) {
+                    self.id < **id
+                } else {
+                    trusted.address.is_some()
+                }
+            })
+            .map(|(id, _)| id.clone())
             .collect();
         for id in reconnect {
             if let Err(error) = self.dial(&id) {
                 tracing::debug!(%error, "reconnect deferred");
+                // A saved address that cannot be dialed at all (e.g. IPv6 after the endpoint
+                // fell back to IPv4 only) fails before any DialFailed; back off the same way.
+                if !self.advertisements.contains_key(&id) {
+                    self.retry_after.insert(id, now + ADDRESS_RETRY);
+                }
             }
         }
         self.refresh();
@@ -1031,6 +1232,102 @@ fn remote_group_matches(supported: bool, groups: &[String], group_id: &str) -> b
     } else {
         group_id == DEFAULT_GROUP_ID
     }
+}
+
+/// Parses an address as entered by the user: `ip`, `ip:port`, `ipv6`, `[ipv6]:port`, with an
+/// optional IPv6 zone (`fe80::1%wlan0` or `%3`). A missing port means `DEFAULT_PORT`.
+fn parse_address(input: &str) -> Result<SocketAddr> {
+    const HINT: &str =
+        "enter an IP address such as 192.168.1.20, 192.168.1.20:45893 or [2001:db8::1]:45893";
+    let input = input.trim();
+    let (host, port) = if let Some(rest) = input.strip_prefix('[') {
+        let (host, rest) = rest.split_once(']').context(HINT)?;
+        let port = match rest {
+            "" => None,
+            rest => Some(rest.strip_prefix(':').context(HINT)?),
+        };
+        (host, port)
+    } else if input.matches(':').count() == 1 {
+        // Exactly one colon is IPv4 with a port; IPv6 always has at least two.
+        let (host, port) = input.split_once(':').unwrap();
+        (host, Some(port))
+    } else {
+        (input, None)
+    };
+    let port = match port {
+        Some(port) => port
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p != 0)
+            .context("port must be 1–65535")?,
+        None => DEFAULT_PORT,
+    };
+    let (ip, zone) = match host.split_once('%') {
+        Some((ip, zone)) => (ip, Some(zone)),
+        None => (host, None),
+    };
+    let ip: IpAddr = ip.parse().context(HINT)?;
+    // `::ffff:a.b.c.d` is an IPv4 peer.
+    let ip = ip.to_canonical();
+    let address = match ip {
+        IpAddr::V4(ip) => {
+            ensure!(zone.is_none(), "only IPv6 addresses take a %zone");
+            ensure!(
+                !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast(),
+                "address must belong to a single device"
+            );
+            SocketAddr::new(ip.into(), port)
+        }
+        IpAddr::V6(ip) => {
+            ensure!(
+                !ip.is_unspecified() && !ip.is_multicast(),
+                "address must belong to a single device"
+            );
+            let scope = match zone {
+                Some(zone) => interface_index(zone)?,
+                None => 0,
+            };
+            ensure!(
+                !ip.is_unicast_link_local() || scope != 0,
+                "a link-local IPv6 address needs its interface, e.g. fe80::1%wlan0"
+            );
+            SocketAddr::V6(SocketAddrV6::new(ip, port, 0, scope))
+        }
+    };
+    Ok(address)
+}
+
+/// Resolves an IPv6 zone given as an interface name or index.
+fn interface_index(zone: &str) -> Result<u32> {
+    if let Ok(index) = zone.parse::<u32>() {
+        return Ok(index);
+    }
+    if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|interface| interface.name == zone)
+        .and_then(|interface| interface.index)
+        .with_context(|| format!("unknown network interface {zone}"))
+}
+
+/// This device's addresses with `port`, shown so the user can enter one elsewhere: IPv4 first,
+/// then routable IPv6. Link-local IPv6 is omitted because its zone only makes sense locally.
+fn local_addresses(port: u16, ipv6: bool) -> Vec<String> {
+    let mut addresses: Vec<SocketAddr> = if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|interface| !interface.is_loopback())
+        .filter_map(|interface| match interface.ip() {
+            IpAddr::V4(ip) if !ip.is_link_local() => Some(SocketAddr::new(ip.into(), port)),
+            IpAddr::V6(ip) if ipv6 && !ip.is_unicast_link_local() && !ip.is_loopback() => {
+                Some(SocketAddr::new(ip.into(), port))
+            }
+            _ => None,
+        })
+        .collect();
+    addresses.sort_by_key(|address| (address.is_ipv6(), *address));
+    addresses.dedup();
+    addresses.into_iter().map(|a| a.to_string()).collect()
 }
 
 fn platform_number(platform: &str) -> i32 {
@@ -1116,6 +1413,7 @@ async fn serve_connection(
     hello: proto::DeviceInfo,
     expected: Option<String>,
     outgoing: bool,
+    manual_address: Option<SocketAddr>,
     tx: async_mpsc::Sender<NetworkEvent>,
 ) -> Result<()> {
     let handshake = async {
@@ -1167,9 +1465,13 @@ async fn serve_connection(
     let handshake = tokio::time::timeout(Duration::from_secs(10), handshake).await;
     let (id, info, code, mut send, mut recv) = match handshake {
         Ok(Ok(value)) => value,
-        error => {
+        Ok(Err(error)) => {
             connection.close(1u8.into(), b"handshake rejected");
-            return Err(anyhow::anyhow!("handshake failed: {error:?}"));
+            return Err(error.context("handshake failed"));
+        }
+        Err(_) => {
+            connection.close(1u8.into(), b"handshake rejected");
+            bail!("handshake timed out");
         }
     };
     let serial = uuid::Uuid::new_v4();
@@ -1189,6 +1491,8 @@ async fn serve_connection(
         remote_groups: Vec::new(),
         remote_groups_supported: false,
         started: Instant::now(),
+        outgoing,
+        manual_address,
     })))
     .await?;
     let writer = async {
@@ -1406,6 +1710,56 @@ mod tests {
             endpoint.close(0u8.into(), b"test done");
         });
     }
+    #[test]
+    fn manual_addresses_default_the_port_and_reject_non_unicast() {
+        let v6 = |text: &str, port, scope| {
+            SocketAddr::V6(SocketAddrV6::new(text.parse().unwrap(), port, 0, scope))
+        };
+        for (input, expected) in [
+            (
+                " 192.168.1.20 ",
+                SocketAddr::from(([192, 168, 1, 20], DEFAULT_PORT)),
+            ),
+            ("10.0.0.2:5000", SocketAddr::from(([10, 0, 0, 2], 5000))),
+            ("[10.0.0.2]:5000", SocketAddr::from(([10, 0, 0, 2], 5000))),
+            (
+                "::ffff:10.0.0.2",
+                SocketAddr::from(([10, 0, 0, 2], DEFAULT_PORT)),
+            ),
+            ("2001:db8::1", v6("2001:db8::1", DEFAULT_PORT, 0)),
+            ("[2001:db8::1]", v6("2001:db8::1", DEFAULT_PORT, 0)),
+            ("[2001:db8::1]:5000", v6("2001:db8::1", 5000, 0)),
+            ("::1", v6("::1", DEFAULT_PORT, 0)),
+            ("fe80::1%3", v6("fe80::1", DEFAULT_PORT, 3)),
+            ("[fe80::1%3]:5000", v6("fe80::1", 5000, 3)),
+        ] {
+            assert_eq!(parse_address(input).unwrap(), expected, "{input}");
+        }
+        // A saved scoped address must survive the trust store's string round trip.
+        let scoped = v6("fe80::1", 5000, 3);
+        assert_eq!(scoped.to_string().parse::<SocketAddr>().unwrap(), scoped);
+        for bad in [
+            "",
+            "host.local",
+            "10.0.0.2:",
+            "10.0.0.2:0",
+            "10.0.0.2:70000",
+            "10.0.0.2%3",
+            "0.0.0.0",
+            "224.0.0.251",
+            "255.255.255.255",
+            "::",
+            "ff02::1",
+            "fe80::1",
+            "[fe80::1]:5000",
+            "fe80::1%no-such-interface",
+            "[2001:db8::1]5000",
+            "[2001:db8::1",
+        ] {
+            assert!(parse_address(bad).is_err(), "{bad} must be rejected");
+        }
+    }
+
     #[test]
     fn payload_validation_and_domain_separated_hash() {
         assert!(validate_clipboard("text/plain", b"hello").is_ok());

@@ -18,6 +18,7 @@ cargo run --locked -p lava-connect -- --name "Lava Desktop"
 `cargo build` 的可执行文件位于 `target/debug/lava-connect`；Linux 构建脚本生成 `target/release/lava-connect`。
 
 两端连接同一个 LAN；选择设备「配对」，核对**两端相同的六位代码和目标设备**，两端都确认。
+设备没有自动出现（例如网络屏蔽多播）时，用「添加设备」输入对方的 IPv4 或 IPv6 地址（端口默认 45893；链路本地 IPv6 需带接口名，如 `fe80::1%wlan0`），连接后同样需要两端核对代码确认。本机地址显示在 Android 设备页的本机卡片和 Linux 设置 → 连接中。通过 IP 添加的设备配对后会记住地址，重启后即使没有 mDNS 也会按该地址自动重连。
 剪贴板同步支持 UTF-8 文字 / PNG（每条最多 8 MiB，PNG 最多 1600 万像素）。Linux 自动监测剪贴板，也可手动发送。
 每个受信任设备的文字、图片能力均可单独关闭；「撤销信任」立即断开并删除本地授权。
 
@@ -28,7 +29,7 @@ cargo run --locked -p lava-connect -- --name "Lava Desktop"
 **先在 GUI 配对，退出 GUI 后再启用 headless 服务**；同一身份不允许被多个进程同时使用。当前尚未拆分 daemon / IPC。
 
 默认数据目录：`${XDG_DATA_HOME:-$HOME/.local/share}/lava-connect`。
-命令选项：`--name`、`--data-dir`、`--port`、`--no-discovery`、`--headless`。mDNS 使用 UDP 5353；QUIC 默认随机 UDP 端口，可用 `--port` 固定端口供防火墙放行。
+命令选项：`--name`、`--data-dir`、`--port`、`--no-discovery`、`--headless`。mDNS 使用 UDP 5353；QUIC 默认在 IPv4 和 IPv6 上同时监听 UDP 45893，需在防火墙中放行（IPv4 和 IPv6 两套规则）。两端都可在设置 → 连接中修改监听端口（`0` 为每次启动随机），修改后连接服务自动重启；Linux 的设置保存在 `~/.config/lava-connect/ui.json`，headless 也会读取，`--port` 仅对本次运行覆盖。保存的端口被占用时会改用随机端口并提示。
 
 ## Android
 

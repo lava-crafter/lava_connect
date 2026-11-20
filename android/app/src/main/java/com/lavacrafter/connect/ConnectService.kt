@@ -54,6 +54,9 @@ data class ConnectState(
     val activeGroupId: String = "00000000-0000-0000-0000-000000000000",
     val groups: List<ClipboardGroup> = emptyList(),
     val backgroundRead: String? = null,
+    /** UDP port the core is bound to, and this device's `ip:port` addresses (IPv4 first). */
+    val listenPort: Int = 0,
+    val addresses: List<String> = emptyList(),
 )
 
 class ConnectService : Service() {
@@ -65,6 +68,7 @@ class ConnectService : Service() {
 
     @Volatile private var handle = 0L
     private var starting = false
+    private var coreJob: Job? = null
 
     @Volatile private var destroyed = false
     private var lock: WifiManager.MulticastLock? = null
@@ -139,6 +143,8 @@ class ConnectService : Service() {
         starting = true
         lastCoreError = null
         scope.launch {
+            // Lets restartCore() wait for this loop to stop before reusing the identity.
+            coreJob = coroutineContext.job
             try {
                 val wifi = getSystemService(WIFI_SERVICE) as WifiManager
                 lock =
@@ -149,13 +155,27 @@ class ConnectService : Service() {
                 // Always publish or dispose the native handle, even if Service dies during startup.
                 withContext(NonCancellable + Dispatchers.IO) {
                     val key = StorageIdentity.getOrCreate(filesDir)
-                    val native =
+                    val port = ConnectionPreferences.port(this@ConnectService).value
+
+                    fun create(port: Int) =
                         NativeCore.create(
                             File(filesDir, "core").absolutePath,
                             android.os.Build.MODEL
                                 .take(64),
                             key,
+                            port,
                         )
+                    val native =
+                        try {
+                            create(port)
+                        } catch (e: IllegalStateException) {
+                            // Another app may hold the chosen port; keep syncing on a random one.
+                            // A second failure (e.g. the identity lock) is the real error.
+                            if (port == 0) throw e
+                            create(0).also {
+                                fail(getString(R.string.error_port_unavailable, port, e.message.orEmpty()))
+                            }
+                        }
                     withContext(NonCancellable + Dispatchers.Main) {
                         if (destroyed) {
                             NativeCore.stop(native)
@@ -186,6 +206,8 @@ class ConnectService : Service() {
                             )
                         }
                     val activeGroupId = snapshot.getString("active_group_id")
+                    val addressList = snapshot.optJSONArray("addresses") ?: JSONArray()
+                    val addresses = (0 until addressList.length()).map { addressList.getString(it) }
                     if (activeGroupId != _state.value.activeGroupId || groups != _state.value.groups) {
                         // Do not apply a failed write from a previous group after switching.
                         pendingClipboard.clear()
@@ -226,6 +248,8 @@ class ConnectService : Service() {
                             devices = devices,
                             groups = groups,
                             activeGroupId = activeGroupId,
+                            listenPort = snapshot.optInt("listen_port"),
+                            addresses = addresses,
                             error = newCoreError ?: _state.value.error,
                         )
                     processEvents(events)
@@ -522,6 +546,26 @@ class ConnectService : Service() {
                 .put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
                 .toString(),
         )
+    }
+
+    /**
+     * Restarts the native core so a changed listening port takes effect. The polling loop is
+     * stopped first so it never touches the old handle, and the old core is stopped (releasing
+     * its identity lock) before the new one starts.
+     */
+    fun restartCore() {
+        if (destroyed) return
+        scope.launch {
+            coreJob?.cancelAndJoin()
+            stopLogWatcher()
+            val native = handle
+            handle = 0L
+            if (native != 0L) withContext(NonCancellable + Dispatchers.IO) { runCatching { NativeCore.stop(native) } }
+            lock?.let { if (it.isHeld) it.release() }
+            lock = null
+            _state.value = _state.value.copy(running = false)
+            if (!destroyed) startCore()
+        }
     }
 
     private fun requireHandle(): Long = handle.also { check(it != 0L) { "Connection service is not running" } }

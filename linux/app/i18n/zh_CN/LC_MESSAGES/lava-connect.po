@@ -97,8 +97,8 @@ msgstr "设备 ID / 指纹"
 msgid "Devices"
 msgstr "设备"
 
-msgid "Devices on the same network appear here automatically."
-msgstr "同一局域网中的设备会自动出现在这里。"
+msgid "Devices on the same network appear here automatically. If one does not, use Add device to enter its IP address."
+msgstr "同一网络中的设备会自动显示在这里。若没有出现，可用“添加设备”输入其 IP 地址。"
 
 msgid "Filter devices"
 msgstr "筛选设备"
@@ -296,3 +296,51 @@ msgstr[0] "{n} 名成员"
 msgid "Syncing with {n} device"
 msgid_plural "Syncing with {n} devices"
 msgstr[0] "正在与 {n} 台设备同步"
+
+msgid "Add device"
+msgstr "添加设备"
+
+msgid "Add device by IP address"
+msgstr "通过 IP 地址添加设备"
+
+msgid "Connect"
+msgstr "连接"
+
+msgid "Use this when the device does not appear automatically. Both devices still have to confirm the pairing code."
+msgstr "设备没有自动出现时使用。两台设备仍需确认配对代码。"
+
+msgid "IPv4 or IPv6 address, e.g. 192.168.1.20"
+msgstr "IPv4 或 IPv6 地址，例如 192.168.1.20"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "This device has no network address yet."
+msgstr "本机暂时没有网络地址。"
+
+msgid "To add this device from the other one, enter {}"
+msgstr "在另一台设备上添加本机时，请输入 {}"
+
+msgid "Listening on UDP port {}"
+msgstr "正在监听 UDP 端口 {}"
+
+msgid "Listening port"
+msgstr "监听端口"
+
+msgid "Now listening on UDP {}"
+msgstr "当前监听 UDP {}"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Other devices connect to this UDP port; allow it in the firewall. 0 picks a random port at every start. Applying restarts the connection service and paired devices reconnect."
+msgstr "其他设备通过此 UDP 端口连接本机，请在防火墙中放行。填 0 则每次启动随机选择端口。应用后连接服务会重启，已配对设备会自动重连。"
+
+msgid "This device · address"
+msgstr "本机 · 地址"
+
+msgid "Copy address"
+msgstr "复制地址"
+
+msgid "A link-local IPv6 address needs its interface, e.g. fe80::1%wlan0."
+msgstr "链路本地 IPv6 地址需带接口名，例如 fe80::1%wlan0。"

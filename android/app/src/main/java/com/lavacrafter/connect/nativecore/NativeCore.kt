@@ -10,6 +10,7 @@ object NativeCore {
         storageDir: String,
         name: String,
         storageKey: String,
+        port: Int,
     ): Long
 
     external fun stop(handle: Long)

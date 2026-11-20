@@ -22,7 +22,7 @@
     <string name="local_note">收到的文字和图片会在后台写入剪贴板。打开本应用时复制的内容会自动发送；设置后台读取后，在任意应用中复制都会发送。</string>
 
     <string name="devices_empty_title">还没有设备</string>
-    <string name="devices_empty_running">同一局域网中的设备会自动出现在这里。</string>
+    <string name="devices_empty_running">同一局域网中的设备会自动出现在这里。若没有出现，可通过 IP 地址添加。</string>
     <string name="devices_empty_stopped">开始同步后即可发现局域网中的设备。</string>
     <string name="devices_select_hint">选择一台设备查看详情</string>
 
@@ -134,4 +134,21 @@
     <string name="error_local_network">发现和连接设备需要局域网权限</string>
     <string name="error_no_share_target">没有可以接收图片的应用</string>
     <string name="error_native_missing">原生核心不可用：请用 scripts/build-android.sh 构建</string>
+    <string name="devices_add">添加设备</string>
+    <string name="add_device_title">通过 IP 地址添加设备</string>
+    <string name="add_device_message">设备没有自动出现时使用。两台设备仍需确认配对代码。</string>
+    <string name="add_device_ip">IP 地址</string>
+    <string name="add_device_ip_hint">例如 192.168.1.20</string>
+    <string name="add_device_ip_support" formatted="false">支持 IPv4 和 IPv6；链路本地 IPv6 需带接口名，例如 fe80::1%wlan0</string>
+    <string name="add_device_port">端口</string>
+    <string name="add_device_connect">连接</string>
+    <string name="add_device_local">在另一台设备上添加本机时，请输入 %1$s</string>
+    <string name="add_device_no_address">本机暂时没有网络地址。</string>
+    <string name="device_address">地址</string>
+    <string name="settings_port">监听端口</string>
+    <string name="settings_port_description">其他设备通过此 UDP 端口连接本机。填 0 则每次启动随机选择端口。应用后连接服务会重启，已配对设备会自动重连。</string>
+    <string name="settings_port_current">当前监听 UDP %1$d</string>
+    <string name="settings_port_apply">应用</string>
+    <string name="settings_port_invalid">请填写 0 或 1024–65535</string>
+    <string name="error_port_unavailable">无法监听端口 %1$d（%2$s），已改用随机端口</string>
 </resources>

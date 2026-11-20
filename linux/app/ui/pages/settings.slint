@@ -3,7 +3,7 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 import { App } from "../app.slint";
 import { Icons } from "../components/icons.slint";
-import { Interactive, Switch, Segmented, VDivider, HDivider } from "../components/controls.slint";
+import { Interactive, Button, ButtonKind, Switch, Segmented, TextField, VDivider, HDivider } from "../components/controls.slint";
 import { Card, SectionHeader, ListRow, CopyableId, Note } from "../components/surfaces.slint";
 
 component Swatch inherits Interactive {
@@ -91,6 +91,41 @@ export component SettingsPage inherits HorizontalLayout {
                             toggled => { App.toggle-pause(); }
                         }
                     }
+                    ListRow {
+                        icon: Icons.link;
+                        title: @tr("Listening port");
+                        description: App.listen-port > 0 ? @tr("Now listening on UDP {}", App.listen-port) : "";
+                        port-input := TextField {
+                            width: 96px;
+                            y: (parent.height - self.height) / 2;
+                            text: App.port-setting;
+                            placeholder: App.default-port;
+                            monospace: true;
+                            accepted(text) => {
+                                if (App.valid-port(text)) { App.set-port(text); }
+                            }
+                        }
+                        Button {
+                            y: (parent.height - self.height) / 2;
+                            text: @tr("Apply");
+                            kind: ButtonKind.tonal;
+                            // Also enabled for the saved port while the core runs on another
+                            // one (it was busy at start), so the user can retry it.
+                            enabled: App.valid-port(port-input.text) && (port-input.text.to-float() != App.port-setting
+                                || (App.port-setting != 0 && App.listen-port > 0 && App.listen-port != App.port-setting));
+                            clicked => { App.set-port(port-input.text); }
+                        }
+                    }
+                    Note {
+                        text: @tr("Other devices connect to this UDP port; allow it in the firewall. 0 picks a random port at every start. Applying restarts the connection service and paired devices reconnect.");
+                    }
+                    for address in App.local-addresses: CopyableId {
+                        label: @tr("This device · address");
+                        value: address;
+                        copy-label: @tr("Copy address");
+                        copy(value) => { App.copy(value); }
+                    }
+                    HDivider { }
                     ListRow {
                         icon: Icons.visibility-off;
                         title: @tr("Closing the window");

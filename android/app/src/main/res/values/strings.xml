@@ -25,7 +25,7 @@
     <string name="local_note">Received text and images are written in the background. Copies are sent while this app is open, or from any app once background reading is set up.</string>
 
     <string name="devices_empty_title">No devices yet</string>
-    <string name="devices_empty_running">Devices on the same network appear here automatically.</string>
+    <string name="devices_empty_running">Devices on the same network appear here automatically. If one does not, add it by IP address.</string>
     <string name="devices_empty_stopped">Start syncing to discover devices on your network.</string>
     <string name="devices_select_hint">Select a device to see its details</string>
 
@@ -137,4 +137,21 @@
     <string name="error_local_network">Local network permission is required for discovery and connections</string>
     <string name="error_no_share_target">No app can receive the image</string>
     <string name="error_native_missing">Native core unavailable: build with scripts/build-android.sh</string>
+    <string name="devices_add">Add device</string>
+    <string name="add_device_title">Add device by IP address</string>
+    <string name="add_device_message">Use this when the device does not appear automatically. Both devices still have to confirm the pairing code.</string>
+    <string name="add_device_ip">IP address</string>
+    <string name="add_device_ip_hint">e.g. 192.168.1.20</string>
+    <string name="add_device_ip_support" formatted="false">IPv4 or IPv6; link-local IPv6 needs its interface, e.g. fe80::1%wlan0</string>
+    <string name="add_device_port">Port</string>
+    <string name="add_device_connect">Connect</string>
+    <string name="add_device_local">To add this device from the other one, enter %1$s</string>
+    <string name="add_device_no_address">This device has no network address yet.</string>
+    <string name="device_address">Address</string>
+    <string name="settings_port">Listening port</string>
+    <string name="settings_port_description">Other devices connect to this UDP port. 0 picks a random port at every start. Applying restarts the connection service; paired devices reconnect.</string>
+    <string name="settings_port_current">Now listening on UDP %1$d</string>
+    <string name="settings_port_apply">Apply</string>
+    <string name="settings_port_invalid">Use 0 or 1024–65535</string>
+    <string name="error_port_unavailable">Unable to listen on port %1$d (%2$s); using a random port</string>
 </resources>

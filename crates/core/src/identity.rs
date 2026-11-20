@@ -112,6 +112,9 @@ pub struct TrustedDevice {
     pub name: String,
     pub platform: String,
     pub allowed: Vec<i32>,
+    /// Manually entered address used to reconnect when mDNS cannot find the peer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<std::net::SocketAddr>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TrustStore {
@@ -249,6 +252,7 @@ mod tests {
                     name: "Old peer".into(),
                     platform: "android".into(),
                     allowed: vec![2],
+                    address: None,
                 },
             )]))
             .unwrap(),
