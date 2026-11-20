@@ -13,7 +13,7 @@
 | quinn / rustls / rcgen | 0.11.12 / 0.23.46 / 0.14.10 |
 | aes-gcm / sha2 / rand | 0.11.1 / 0.11.1 / 0.10.3 |
 | hex / uuid / fs2 / tempfile | 0.4.3 / 1.29.0 / 0.4.3 / 3.27.0 |
-| mdns-sd | 0.21.6 |
+| mdns-sd / if-addrs / socket2 | 0.21.6 / 0.15.0 / 0.6.5 |
 | prost / prost-build / protoc-bin-vendored | 0.14.4 / 0.14.4 / 3.3.0 |
 | slint / slint-build / ksni / ctrlc | 1.18.1 / 1.18.1 / 0.3.7 / 3.5.2 |
 | base64 / jni | 0.23.1 / 0.22.4 |
