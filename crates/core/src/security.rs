@@ -10,7 +10,11 @@ use rustls::{
     pki_types::{CertificateDer, ServerName, UnixTime},
     server::danger::{ClientCertVerified, ClientCertVerifier},
 };
-use std::sync::Arc;
+use std::{
+    io,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    sync::Arc,
+};
 
 #[derive(Debug)]
 struct IdentityVerifier {
@@ -122,9 +126,35 @@ pub fn endpoint(identity: &Identity, port: u16) -> Result<quinn::Endpoint> {
         quinn::crypto::rustls::QuicClientConfig::try_from(client)?,
     ));
     client.transport_config(transport);
-    let mut endpoint = quinn::Endpoint::server(server, ([0, 0, 0, 0], port).into())?;
+    let mut endpoint = quinn::Endpoint::new(
+        quinn::EndpointConfig::default(),
+        Some(server),
+        bind(port)?,
+        Arc::new(quinn::TokioRuntime),
+    )?;
     endpoint.set_default_client_config(client);
     Ok(endpoint)
+}
+
+/// Binds one dual-stack UDP socket so the same port serves IPv4 and IPv6 peers (IPv4 peers
+/// appear as `::ffff:` mapped addresses). Falls back to IPv4 only where IPv6 is unavailable.
+fn bind(port: u16) -> io::Result<UdpSocket> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let dual = (|| {
+        let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+        socket.set_only_v6(false)?;
+        socket.bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)).into())?;
+        Ok::<UdpSocket, io::Error>(socket.into())
+    })();
+    match dual {
+        Ok(socket) => Ok(socket),
+        // A taken port is a real error, not a sign that IPv6 is missing.
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => Err(error),
+        Err(error) => {
+            tracing::debug!(%error, "IPv6 unavailable; listening on IPv4 only");
+            UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port))
+        }
+    }
 }
 
 pub fn pairing_code(connection: &quinn::Connection, local: &str, remote: &str) -> Result<String> {

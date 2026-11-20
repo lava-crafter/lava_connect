@@ -6,6 +6,8 @@ mod security;
 pub use runtime::{CoreConfig, CoreHandle};
 
 pub const DEFAULT_GROUP_ID: &str = "00000000-0000-0000-0000-000000000000";
+/// UDP port the apps listen on unless the user picks another one. `0` means a random port.
+pub const DEFAULT_PORT: u16 = 45893;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClipboardGroup {
@@ -39,6 +41,11 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub active_group_id: String,
     pub groups: Vec<ClipboardGroup>,
+    /// UDP port the QUIC endpoint is bound to.
+    pub listen_port: u16,
+    /// This device's `ip:port` addresses (IPv4 first, then routable IPv6 in brackets), for
+    /// entering on another device.
+    pub addresses: Vec<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -83,6 +90,12 @@ pub enum Command {
     },
     ConnectAddress {
         device_id: String,
+        address: String,
+    },
+    /// Connect to an IPv4 or IPv6 address, with or without a port (`1.2.3.4`, `1.2.3.4:5`,
+    /// `2001:db8::1`, `[2001:db8::1]:5`, `fe80::1%wlan0`), and start pairing. The peer's identity
+    /// is learned from its TLS certificate; pairing still needs both confirmations.
+    AddAddress {
         address: String,
     },
     Pair {
