@@ -109,7 +109,10 @@ export component SettingsPage inherits HorizontalLayout {
                             y: (parent.height - self.height) / 2;
                             text: @tr("Apply");
                             kind: ButtonKind.tonal;
-                            enabled: App.valid-port(port-input.text) && port-input.text.to-float() != App.port-setting;
+                            // Also enabled for the saved port while the core runs on another
+                            // one (it was busy at start), so the user can retry it.
+                            enabled: App.valid-port(port-input.text) && (port-input.text.to-float() != App.port-setting
+                                || (App.port-setting != 0 && App.listen-port > 0 && App.listen-port != App.port-setting));
                             clicked => { App.set-port(port-input.text); }
                         }
                     }

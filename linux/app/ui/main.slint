@@ -508,7 +508,7 @@ export component MainWindow inherits Window {
             title: @tr("Add device by IP address");
             confirm-label: @tr("Connect");
             dismiss-label: @tr("Cancel");
-            confirm-enabled: add-ip.text != "" && (add-port.text == "" || App.valid-port(add-port.text));
+            confirm-enabled: add-ip.text != "" && (add-port.text == "" || App.valid-peer-port(add-port.text));
             confirm => { confirm-dialog(); }
             dismiss => { close-dialog(); }
             Text {

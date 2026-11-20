@@ -209,7 +209,9 @@ fn main() -> Result<()> {
         let app = ui.global::<App>();
         app.set_version(env!("CARGO_PKG_VERSION").into());
         app.set_default_port(DEFAULT_PORT.into());
-        app.set_port_setting(config.listen_port.into());
+        // The saved port, not `config.listen_port`: that may be a `--port` override or the
+        // random-port fallback after the saved one could not be bound.
+        app.set_port_setting(s.listen_port.into());
         app.set_page(match s.page {
             1 => Page::Groups,
             2 => Page::Settings,
@@ -390,23 +392,25 @@ fn wire_callbacks(ui: &MainWindow, tx: &mpsc::Sender<Intent>, settings: &Rc<RefC
         let _ = send.send(core(Command::AddAddress { address }));
     });
     let send = tx.clone();
-    app.on_set_port(move |text| {
-        // Same rule as App.valid-port: 0 (random) or an unprivileged port.
-        match text.trim().parse::<u16>() {
-            Ok(port) if port == 0 || port >= 1024 => {
-                let _ = send.send(Intent::Restart(port));
-            }
-            _ => {}
-        }
-    });
     let weak = ui.as_weak();
     let s = settings.clone();
-    app.on_port_applied(move |port| {
-        let Some(ui) = weak.upgrade() else { return };
-        ui.global::<App>().set_port_setting(port);
+    app.on_set_port(move |text| {
+        // Same rule as App.valid-port: 0 (random) or an unprivileged port.
+        let Ok(port) = text.trim().parse::<u16>() else {
+            return;
+        };
+        if port != 0 && port < 1024 {
+            return;
+        }
+        // Saved even if it cannot be bound right now, as on Android: a port held by another
+        // program is usually free again later, and every start tries the saved port first.
+        if let Some(ui) = weak.upgrade() {
+            ui.global::<App>().set_port_setting(port.into());
+        }
         let mut settings = s.borrow_mut();
-        settings.listen_port = port as u16;
+        settings.listen_port = port;
         settings.save();
+        let _ = send.send(Intent::Restart(port));
     });
     let send = tx.clone();
     app.on_quit(move || {
@@ -521,14 +525,6 @@ fn controller(
             }
             Ok(Intent::Restart(port)) => {
                 status = restart(core, &mut config, port);
-                // Only a port the core could bind is saved, so the next start does not fail.
-                if config.listen_port == port
-                    && let Some(ui) = &ui
-                {
-                    let _ = ui.upgrade_in_event_loop(move |ui| {
-                        ui.global::<App>().invoke_port_applied(port.into());
-                    });
-                }
             }
             Ok(Intent::Core(command)) => {
                 if let Err(error) = core.command(command) {

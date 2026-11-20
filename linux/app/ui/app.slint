@@ -68,9 +68,8 @@ export global App {
     callback toggle-pause();
     callback copy(string);
     callback add-device(string /* IP or IP:port */, string /* port */);
+    // Saves the port and restarts the core on it.
     callback set-port(string);
-    // Called by src/main.rs once the core runs on the new port, to save it.
-    callback port-applied(int);
     callback filter-changed(string);
     callback appearance-changed();
     callback page-changed();
@@ -88,6 +87,13 @@ export global App {
         if (!text.is-float()) { return false; }
         let port = text.to-float();
         return port == Math.round(port) && (port == 0 || (port >= 1024 && port <= 65535));
+    }
+
+    /// Port of another device: 1–65535, same rule as the core and Android's AddDeviceDialog.
+    public pure function valid-peer-port(text: string) -> bool {
+        if (!text.is-float()) { return false; }
+        let port = text.to-float();
+        return port == Math.round(port) && port >= 1 && port <= 65535;
     }
 
     public pure function state-label(state: string) -> string {
